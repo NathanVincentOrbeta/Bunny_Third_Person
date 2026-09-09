@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "Bunny_Third_PersonCharacter.h"
 #include "Engine/LocalPlayer.h"
 #include "Camera/CameraComponent.h"
@@ -46,8 +44,7 @@ ABunny_Third_PersonCharacter::ABunny_Third_PersonCharacter()
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
 
-	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
-	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
+	CombatComp = CreateDefaultSubobject<UCombatComponent>(TEXT("CombatComponent"));
 }
 
 void ABunny_Third_PersonCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -65,6 +62,9 @@ void ABunny_Third_PersonCharacter::SetupPlayerInputComponent(UInputComponent* Pl
 
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ABunny_Third_PersonCharacter::Look);
+
+		//Attacking
+		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::Attack);
 	}
 	else
 	{
@@ -130,4 +130,13 @@ void ABunny_Third_PersonCharacter::DoJumpEnd()
 {
 	// signal the character to stop jumping
 	StopJumping();
+}
+
+void ABunny_Third_PersonCharacter::Attack() {
+
+	if (CombatComp) {
+
+		CombatComp->Attack();
+	}
+
 }
