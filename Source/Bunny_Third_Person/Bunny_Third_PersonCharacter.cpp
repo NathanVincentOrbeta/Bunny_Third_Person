@@ -12,6 +12,8 @@
 #include "InputActionValue.h"
 #include "Bunny_Third_Person.h"
 
+DEFINE_LOG_CATEGORY(LogTemplateCharacter);
+
 ABunny_Third_PersonCharacter::ABunny_Third_PersonCharacter()
 {
 	// Set size for collision capsule
@@ -46,6 +48,10 @@ ABunny_Third_PersonCharacter::ABunny_Third_PersonCharacter()
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
 
+	// Create a grabable static mesh
+	objectGrabable = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ObjectGrabable"));
+	objectGrabable->SetupAttachment(RootComponent);
+
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
 }
@@ -65,6 +71,9 @@ void ABunny_Third_PersonCharacter::SetupPlayerInputComponent(UInputComponent* Pl
 
 		// Looking
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ABunny_Third_PersonCharacter::Look);
+
+		// Grab
+		//EnhancedInputComponent->BindAction(GrabAction, ETriggerEvent::Triggered, this & ABunny_Third_PersonCharacter::DoGrab);
 	}
 	else
 	{
@@ -130,4 +139,18 @@ void ABunny_Third_PersonCharacter::DoJumpEnd()
 {
 	// signal the character to stop jumping
 	StopJumping();
+}
+
+void ABunny_Third_PersonCharacter::DoGrab()
+{
+
+}
+
+void ABunny_Third_PersonCharacter::PickupObject(UStaticMesh* NewMesh)
+{
+	if (objectGrabable && NewMesh)
+	{
+		objectGrabable->SetStaticMesh(NewMesh);
+		UE_LOG(LogTemplateCharacter, Warning, TEXT("Picked up object: %s"), *NewMesh->GetName());
+	}
 }

@@ -30,6 +30,9 @@ class ABunny_Third_PersonCharacter : public ACharacter
 	/** Follow camera */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	UCameraComponent* FollowCamera;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	UStaticMeshComponent* objectGrabable;
 	
 protected:
 
@@ -48,6 +51,10 @@ protected:
 	/** Mouse Look Input Action */
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* MouseLookAction;
+
+	/** Grab Input Action */
+	UPROPERTY(EditAnywhere, Category="Input")
+	UInputAction* GrabAction;
 
 public:
 
@@ -85,6 +92,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Input")
 	virtual void DoJumpEnd();
 
+	/** Grab input */
+	UFUNCTION(BlueprintCallable, Category = "Input")
+	virtual void DoGrab();
+
+	/** Custom event for picking up object */
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	void PickupObject(UStaticMesh* NewMesh);
+
 public:
 
 	/** Returns CameraBoom subobject **/
@@ -92,5 +107,8 @@ public:
 
 	/** Returns FollowCamera subobject **/
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
+
+	/** Returns objectGrabable **/
+	FORCEINLINE class UStaticMeshComponent* GetObjectGrabable() const { return objectGrabable; }
 };
 
