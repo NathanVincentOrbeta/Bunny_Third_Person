@@ -10,19 +10,21 @@ ABP_ObjectGrab::ABP_ObjectGrab()
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
-	// Collostion
-	CollisonSphere = CreateDefaultSubobject<USphereComponent>(TEXT("Collison"));
-	RootComponent = CollisonSphere;
-
 	// Creating the Test Object
 	MyObjectBox = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("InterObject"));
-	MyObjectBox->SetupAttachment(RootComponent);
+	RootComponent = MyObjectBox;
+	
+	// Collostion
+	CollisonSphere = CreateDefaultSubobject<USphereComponent>(TEXT("Collison"));
+	CollisonSphere->SetupAttachment(MyObjectBox);
 
 	//Gravety settings
 	MyObjectBox->SetSimulatePhysics(true);
 	MyObjectBox->SetEnableGravity(true);
 	MyObjectBox->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	MyObjectBox->SetCollisionObjectType(ECC_WorldDynamic);
+
+	bIsHeld = false;
 }
 
 // Called when the game starts or when spawned
@@ -49,29 +51,20 @@ void ABP_ObjectGrab::OnBeginOverlap(UPrimitiveComponent* OverlappedCompnent,
 	AActor* OtherActor, UPrimitiveComponent* OtherComp,
 	int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (OtherActor && OtherActor->IsA<ACharacter>()) 
+	if (OtherActor && OtherActor->IsA<ABunny_Third_PersonCharacter>()) 
 	{
-		ACharacter* Charather = Cast<ACharacter>(OtherActor);
-		APlayerController* PlayerController = Cast<APlayerController>(Charather->Controller);
-
-		if (PlayerController)
-		{
-			PlayerController->EnableInput(PlayerController);
-		}
+		OverlappingCharacther = Cast<ABunny_Third_PersonCharacter>(OtherActor);
 	}
 }
 
 void ABP_ObjectGrab::OnEndOverlap(UPrimitiveComponent* OverlappedCompnent, AActor* OtherActor, 
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-	if (OtherActor && OtherActor->IsA<ACharacter>())
+	if (OtherActor && OtherActor->IsA<ABunny_Third_PersonCharacter>())
 	{
-		ACharacter* Charather = Cast<ACharacter>(OtherActor);
-		APlayerController* PlayerController = Cast<APlayerController>(Charather->Controller);
-
-		if (PlayerController)
+		if (OverlappingCharacther == OtherActor)
 		{
-			PlayerController->DisableInput(PlayerController);
+			OverlappingCharacther = nullptr;
 		}
 	}
 }
@@ -80,7 +73,18 @@ void ABP_ObjectGrab::GrabObjcet()
 {
 	if (OverlappingCharacther && MyObjectBox)
 	{
+		bIsHeld = true;
 		OverlappingCharacther->PickupObject(MyObjectBox->GetStaticMesh());
 	}
+}
+
+void ABP_ObjectGrab::DropObject()
+{
+	if (OverlappingCharacther && bIsHeld == true)
+	{	
+		bIsHeld = false;
+		OverlappingCharacther->PickupObject(nullptr);
+	}
+	
 }
 

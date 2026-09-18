@@ -28,6 +28,9 @@ protected:
 	UPROPERTY()
 	ABunny_Third_PersonCharacter* OverlappingCharacther;
 
+	UPROPERTY()
+	bool bIsHeld;
+
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
@@ -47,4 +50,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Grab")
 	void GrabObjcet();
+
+	UFUNCTION(BlueprintCallable, Category = "Grab")
+	void DropObject();
+
+	UFUNCTION(BlueprintCallable, Category = "Grab")
+	bool IsHeld() const { return bIsHeld; }
+
+	
 };

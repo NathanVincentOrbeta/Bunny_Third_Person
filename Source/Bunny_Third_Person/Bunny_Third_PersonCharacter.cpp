@@ -11,6 +11,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "Bunny_Third_Person.h"
+#include <BP_ObjectGrab.h>
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -52,6 +53,8 @@ ABunny_Third_PersonCharacter::ABunny_Third_PersonCharacter()
 	objectGrabable = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ObjectGrabable"));
 	objectGrabable->SetupAttachment(RootComponent);
 
+	HeldGrabObject = nullptr;
+
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
 }
@@ -73,7 +76,7 @@ void ABunny_Third_PersonCharacter::SetupPlayerInputComponent(UInputComponent* Pl
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ABunny_Third_PersonCharacter::Look);
 
 		// Grab
-		//EnhancedInputComponent->BindAction(GrabAction, ETriggerEvent::Triggered, this & ABunny_Third_PersonCharacter::DoGrab);
+		EnhancedInputComponent->BindAction(GrabAction, ETriggerEvent::Started, this, & ABunny_Third_PersonCharacter::DoGrab);
 	}
 	else
 	{
@@ -143,14 +146,42 @@ void ABunny_Third_PersonCharacter::DoJumpEnd()
 
 void ABunny_Third_PersonCharacter::DoGrab()
 {
+	// if holding a object, drop it
+	if (HeldGrabObject)
+	{
+		HeldGrabObject->DropObject();
+		HeldGrabObject = nullptr;
+		return;
+	}
 
+	// Find The overlap
+	TArray<AActor*> OverlappingActors;
+	GetOverlappingActors(OverlappingActors, ABP_ObjectGrab::StaticClass());
+
+	if (OverlappingActors.Num() > 0)
+	{
+		ABP_ObjectGrab* GrabObject = Cast<ABP_ObjectGrab>(OverlappingActors[0]);
+		if (GrabObject)
+		{
+			HeldGrabObject = GrabObject;
+			GrabObject->GrabObjcet();
+		}
+	}
 }
 
 void ABunny_Third_PersonCharacter::PickupObject(UStaticMesh* NewMesh)
 {
-	if (objectGrabable && NewMesh)
+	if (objectGrabable)
 	{
-		objectGrabable->SetStaticMesh(NewMesh);
-		UE_LOG(LogTemplateCharacter, Warning, TEXT("Picked up object: %s"), *NewMesh->GetName());
+		if (objectGrabable && NewMesh)
+		{
+			objectGrabable->SetStaticMesh(NewMesh);
+			UE_LOG(LogTemplateCharacter, Warning, TEXT("Picked up object: %s"), *NewMesh->GetName());
+		}
+		else
+		{
+			objectGrabable->SetStaticMesh(nullptr);
+			UE_LOG(LogTemplateCharacter, Warning, TEXT("Dropped object"));
+		}
 	}
 }

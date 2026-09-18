@@ -10,6 +10,7 @@
 class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
+class ABP_ObjectGrab;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -55,6 +56,9 @@ protected:
 	/** Grab Input Action */
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* GrabAction;
+
+	UPROPERTY()
+	ABP_ObjectGrab* HeldGrabObject;
 
 public:
 
