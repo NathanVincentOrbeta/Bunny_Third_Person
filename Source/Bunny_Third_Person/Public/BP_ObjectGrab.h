@@ -7,6 +7,8 @@
 #include "Containers/List.h"
 #include "BP_ObjectGrab.generated.h"
 
+class USphereComponent;
+class UStaticMeshComponent;
 class ABunny_Third_PersonCharacter;
 
 UCLASS()
@@ -24,9 +26,6 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	USphereComponent* CollisonSphere;
-
-	UPROPERTY()
-	ABunny_Third_PersonCharacter* OverlappingCharacther;
 
 	UPROPERTY()
 	bool bIsHeld;
@@ -49,13 +48,11 @@ public:
 		int32 OtherBodyIndex);
 
 	UFUNCTION(BlueprintCallable, Category = "Grab")
-	void GrabObjcet();
+	void GrabObject(USceneComponent* AttachToComponent, FName SocketName = NAME_None);
 
 	UFUNCTION(BlueprintCallable, Category = "Grab")
 	void DropObject();
 
 	UFUNCTION(BlueprintCallable, Category = "Grab")
 	bool IsHeld() const { return bIsHeld; }
-
-	
 };

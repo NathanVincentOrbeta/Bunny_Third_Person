@@ -17,8 +17,11 @@ DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
 ABunny_Third_PersonCharacter::ABunny_Third_PersonCharacter()
 {
-	// Set size for collision capsule
+	// collision capsule Settigns
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
+	GetCapsuleComponent()->SetGenerateOverlapEvents(true);
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Overlap);
+	
 		
 	// Don't rotate when the controller rotates. Let that just affect the camera.
 	bUseControllerRotationPitch = false;
@@ -49,11 +52,12 @@ ABunny_Third_PersonCharacter::ABunny_Third_PersonCharacter()
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
 
-	// Create a grabable static mesh
-	objectGrabable = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ObjectGrabable"));
-	objectGrabable->SetupAttachment(RootComponent);
+	// Create a grabable values
+	HoldPoint = CreateDefaultSubobject<USceneComponent>(TEXT("HoldPoint"));
+	HoldPoint->SetupAttachment(RootComponent);
 
 	HeldGrabObject = nullptr;
+	NearbyGrabObject = nullptr;
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
@@ -154,34 +158,11 @@ void ABunny_Third_PersonCharacter::DoGrab()
 		return;
 	}
 
-	// Find The overlap
-	TArray<AActor*> OverlappingActors;
-	GetOverlappingActors(OverlappingActors, ABP_ObjectGrab::StaticClass());
-
-	if (OverlappingActors.Num() > 0)
+	if (NearbyGrabObject && !NearbyGrabObject->IsHeld())
 	{
-		ABP_ObjectGrab* GrabObject = Cast<ABP_ObjectGrab>(OverlappingActors[0]);
-		if (GrabObject)
-		{
-			HeldGrabObject = GrabObject;
-			GrabObject->GrabObjcet();
-		}
-	}
-}
+		HeldGrabObject = NearbyGrabObject;
 
-void ABunny_Third_PersonCharacter::PickupObject(UStaticMesh* NewMesh)
-{
-	if (objectGrabable)
-	{
-		if (objectGrabable && NewMesh)
-		{
-			objectGrabable->SetStaticMesh(NewMesh);
-			UE_LOG(LogTemplateCharacter, Warning, TEXT("Picked up object: %s"), *NewMesh->GetName());
-		}
-		else
-		{
-			objectGrabable->SetStaticMesh(nullptr);
-			UE_LOG(LogTemplateCharacter, Warning, TEXT("Dropped object"));
-		}
+		HeldGrabObject->GrabObject(GetMesh(), FName("right_hand"));
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, TEXT("It's Grabing"));
 	}
 }

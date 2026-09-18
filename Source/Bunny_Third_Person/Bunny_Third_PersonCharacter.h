@@ -25,16 +25,16 @@ class ABunny_Third_PersonCharacter : public ACharacter
 	GENERATED_BODY()
 
 	/** Camera boom positioning the camera behind the character */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Camera", meta = (AllowPrivateAccess = "true"))
 	USpringArmComponent* CameraBoom;
 
 	/** Follow camera */
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Camera", meta = (AllowPrivateAccess = "true"))
 	UCameraComponent* FollowCamera;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
-	UStaticMeshComponent* objectGrabable;
-	
+	USceneComponent* HoldPoint;
+
 protected:
 
 	/** Jump Input Action */
@@ -57,8 +57,11 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* GrabAction;
 
-	UPROPERTY()
+	UPROPERTY(VisibleInstanceOnly, Category="Grab")
 	ABP_ObjectGrab* HeldGrabObject;
+	
+	UPROPERTY(VisibleInstanceOnly, Category="Grab")
+	ABP_ObjectGrab* NearbyGrabObject;
 
 public:
 
@@ -69,8 +72,6 @@ protected:
 
 	/** Initialize input action bindings */
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
-protected:
 
 	/** Called for movement input */
 	void Move(const FInputActionValue& Value);
@@ -100,9 +101,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Input")
 	virtual void DoGrab();
 
-	/** Custom event for picking up object */
-	UFUNCTION(BlueprintCallable, Category = "Interaction")
-	void PickupObject(UStaticMesh* NewMesh);
+	/** Handle overlaping for object */
+	void SetNearbyGrabObject(ABP_ObjectGrab* Object) { NearbyGrabObject = Object; }
+	void ClearNearbyGrabObject(ABP_ObjectGrab* Object) { if (NearbyGrabObject == Object) NearbyGrabObject = nullptr; }
 
 public:
 
@@ -113,6 +114,6 @@ public:
 	FORCEINLINE class UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 
 	/** Returns objectGrabable **/
-	FORCEINLINE class UStaticMeshComponent* GetObjectGrabable() const { return objectGrabable; }
+	FORCEINLINE class USceneComponent* GetHoldPoint() const { return HoldPoint; }
 };
 

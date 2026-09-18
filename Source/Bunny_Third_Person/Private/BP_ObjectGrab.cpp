@@ -8,22 +8,23 @@
 ABP_ObjectGrab::ABP_ObjectGrab()
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
 
 	// Creating the Test Object
 	MyObjectBox = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("InterObject"));
 	RootComponent = MyObjectBox;
 	
-	// Collostion
-	CollisonSphere = CreateDefaultSubobject<USphereComponent>(TEXT("Collison"));
-	CollisonSphere->SetupAttachment(MyObjectBox);
-
 	//Gravety settings
 	MyObjectBox->SetSimulatePhysics(true);
 	MyObjectBox->SetEnableGravity(true);
 	MyObjectBox->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	MyObjectBox->SetCollisionObjectType(ECC_WorldDynamic);
 
+	// Collostion
+	CollisonSphere = CreateDefaultSubobject<USphereComponent>(TEXT("CollisonSphere"));
+	CollisonSphere->SetupAttachment(MyObjectBox);
+	CollisonSphere->InitSphereRadius(150.0f);
+	
 	bIsHeld = false;
 }
 
@@ -34,6 +35,12 @@ void ABP_ObjectGrab::BeginPlay()
 	
 	if (CollisonSphere) // add in the overlap 
 	{
+		CollisonSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		CollisonSphere->SetCollisionObjectType(ECC_WorldDynamic);
+		CollisonSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
+		CollisonSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+		CollisonSphere->SetGenerateOverlapEvents(true);
+
 		CollisonSphere->OnComponentBeginOverlap.AddDynamic(this, &ABP_ObjectGrab::OnBeginOverlap);
 		CollisonSphere->OnComponentEndOverlap.AddDynamic(this, &ABP_ObjectGrab::OnEndOverlap);
 	}
@@ -51,40 +58,46 @@ void ABP_ObjectGrab::OnBeginOverlap(UPrimitiveComponent* OverlappedCompnent,
 	AActor* OtherActor, UPrimitiveComponent* OtherComp,
 	int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (OtherActor && OtherActor->IsA<ABunny_Third_PersonCharacter>()) 
+	if (ABunny_Third_PersonCharacter* Character = Cast<ABunny_Third_PersonCharacter>(OtherActor)) 
 	{
-		OverlappingCharacther = Cast<ABunny_Third_PersonCharacter>(OtherActor);
+		Character->SetNearbyGrabObject(this);
+		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, TEXT("In box"));
 	}
 }
 
 void ABP_ObjectGrab::OnEndOverlap(UPrimitiveComponent* OverlappedCompnent, AActor* OtherActor, 
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-	if (OtherActor && OtherActor->IsA<ABunny_Third_PersonCharacter>())
+	if (ABunny_Third_PersonCharacter * Character = Cast<ABunny_Third_PersonCharacter>(OtherActor))
 	{
-		if (OverlappingCharacther == OtherActor)
+		if (!OverlappedCompnent->IsOverlappingActor(OtherActor))
 		{
-			OverlappingCharacther = nullptr;
+			Character->ClearNearbyGrabObject(this);
 		}
 	}
 }
 
-void ABP_ObjectGrab::GrabObjcet()
+void ABP_ObjectGrab::GrabObject(USceneComponent* AttachToComponent, FName SocketName)
 {
-	if (OverlappingCharacther && MyObjectBox)
-	{
-		bIsHeld = true;
-		OverlappingCharacther->PickupObject(MyObjectBox->GetStaticMesh());
-	}
+	if (!AttachToComponent) return;
+
+	bIsHeld = true;
+
+	MyObjectBox->SetSimulatePhysics(false);
+	MyObjectBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
+
+	// Attach Object to socket 
+	FAttachmentTransformRules AttachmentRule = FAttachmentTransformRules::SnapToTargetNotIncludingScale;
+	MyObjectBox->AttachToComponent(AttachToComponent, AttachmentRule, SocketName);
 }
 
 void ABP_ObjectGrab::DropObject()
 {
-	if (OverlappingCharacther && bIsHeld == true)
-	{	
-		bIsHeld = false;
-		OverlappingCharacther->PickupObject(nullptr);
-	}
-	
+	bIsHeld = false;
+
+	MyObjectBox->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+
+	MyObjectBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	MyObjectBox->SetSimulatePhysics(true);
 }
 
