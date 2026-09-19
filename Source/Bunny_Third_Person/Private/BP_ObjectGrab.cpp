@@ -61,7 +61,6 @@ void ABP_ObjectGrab::OnBeginOverlap(UPrimitiveComponent* OverlappedCompnent,
 	if (ABunny_Third_PersonCharacter* Character = Cast<ABunny_Third_PersonCharacter>(OtherActor)) 
 	{
 		Character->SetNearbyGrabObject(this);
-		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, TEXT("In box"));
 	}
 }
 
@@ -99,5 +98,28 @@ void ABP_ObjectGrab::DropObject()
 
 	MyObjectBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
 	MyObjectBox->SetSimulatePhysics(true);
+}
+
+void ABP_ObjectGrab::DropAndImpulse(const FVector& Impulse)
+{
+	DropObject();
+
+	if (MyObjectBox)
+	{
+		MyObjectBox->AddImpulse(Impulse, NAME_None, true);
+	}
+}
+
+void ABP_ObjectGrab::PlaceAndDrop(const FVector& TargetLocation, const FVector& Impulse)
+{
+	bIsHeld = false;
+
+	MyObjectBox->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+	SetActorLocation(TargetLocation, false, nullptr, ETeleportType::TeleportPhysics);
+	MyObjectBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	MyObjectBox->SetSimulatePhysics(true);
+
+	MyObjectBox->AddImpulse(Impulse, NAME_None, true);
+
 }
 

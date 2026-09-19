@@ -55,4 +55,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Grab")
 	bool IsHeld() const { return bIsHeld; }
+
+	//Items Drop physics
+	UFUNCTION(BlueprintCallable, Category = "Grab")
+	void DropAndImpulse(const FVector& Impulse);
+
+	//Test idea
+	UFUNCTION(BlueprintCallable, Category = "Grab")
+	void PlaceAndDrop(const FVector& TargetLocation, const FVector& Impulse);
 };

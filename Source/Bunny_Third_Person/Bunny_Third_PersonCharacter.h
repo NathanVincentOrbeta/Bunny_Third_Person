@@ -57,11 +57,6 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* GrabAction;
 
-	UPROPERTY(VisibleInstanceOnly, Category="Grab")
-	ABP_ObjectGrab* HeldGrabObject;
-	
-	UPROPERTY(VisibleInstanceOnly, Category="Grab")
-	ABP_ObjectGrab* NearbyGrabObject;
 
 public:
 
@@ -78,6 +73,19 @@ protected:
 
 	/** Called for looking input */
 	void Look(const FInputActionValue& Value);
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Grab")
+	ABP_ObjectGrab* HeldGrabObject;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Grab")
+	ABP_ObjectGrab* NearbyGrabObject;
+
+	/** Momentum for the object jump */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Jump", meta = (AllowAbstract = "true"))
+	float ObjectJumpBoost = 700.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, CateGOry = "Jump", meta = (AllowAbstract = "true"))
+	float ObjectDownImpulse = 800.0f;
 
 public:
 

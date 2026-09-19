@@ -69,8 +69,8 @@ void ABunny_Third_PersonCharacter::SetupPlayerInputComponent(UInputComponent* Pl
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
 		
 		// Jumping
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoJumpStart);
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ABunny_Third_PersonCharacter::DoJumpEnd);
 
 		// Moving
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ABunny_Third_PersonCharacter::Move);
@@ -139,7 +139,52 @@ void ABunny_Third_PersonCharacter::DoLook(float Yaw, float Pitch)
 void ABunny_Third_PersonCharacter::DoJumpStart()
 {
 	// signal the character to jump
-	Jump();
+	if (CanJump())
+	{
+		Jump();
+		return;
+	}
+
+	// if player have normal jump and dubble 
+	if (HeldGrabObject && GetCharacterMovement()->IsFalling())
+	{
+		/**
+		Add back when test done
+		*/
+		//// Object under his feet
+		//float HalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+		//FVector DropLocation = GetActorLocation() - FVector(0.0f, 0.0f, HalfHeight + 35.0f);
+		//HeldGrabObject->SetActorLocation(DropLocation);
+
+		/**
+		Test idea for object underplayer
+		*/
+		const float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+		const FVector PlayerLocation = GetActorLocation();
+		const float CapsuleBottomZ = PlayerLocation.Z - CapsuleHalfHeight; //Get's the Capsule Z location 
+
+		FVector Origin, BoxExtent; 
+		HeldGrabObject->GetActorBounds(true, Origin, BoxExtent);
+
+		// Posistion the box 
+		const FVector DropLocation = FVector(
+			PlayerLocation.X,
+			PlayerLocation.Y,
+			CapsuleBottomZ - BoxExtent.Z - 10.0f
+		);
+
+		FVector DownwardImpulse = FVector(0.0f, 0.0f, -ObjectDownImpulse); // hold
+		HeldGrabObject->PlaceAndDrop(DropLocation, DownwardImpulse); //HeldGrabObject->DropAndImpulse(DownwardImpulse); ** Remove Test add this
+		/**
+		Test code end
+		*/
+
+		// Clear hand 
+		HeldGrabObject = nullptr;
+
+		// The jump
+		LaunchCharacter(FVector(0.0f, 0.0f, ObjectJumpBoost), false, true);
+	}
 }
 
 void ABunny_Third_PersonCharacter::DoJumpEnd()
@@ -163,6 +208,5 @@ void ABunny_Third_PersonCharacter::DoGrab()
 		HeldGrabObject = NearbyGrabObject;
 
 		HeldGrabObject->GrabObject(GetMesh(), FName("right_hand"));
-		GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Green, TEXT("It's Grabing"));
 	}
 }
