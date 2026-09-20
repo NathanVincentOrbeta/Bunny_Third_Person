@@ -11,12 +11,17 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "Bunny_Third_Person.h"
+#include "Kismet/KismetMathLibrary.h"
 #include <BP_ObjectGrab.h>
+
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
 ABunny_Third_PersonCharacter::ABunny_Third_PersonCharacter()
 {
+	//Time
+	PrimaryActorTick.bCanEverTick = true;
+
 	// collision capsule Settigns
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 	GetCapsuleComponent()->SetGenerateOverlapEvents(true);
@@ -30,7 +35,12 @@ ABunny_Third_PersonCharacter::ABunny_Third_PersonCharacter()
 
 	// Configure character movement
 	GetCharacterMovement()->bOrientRotationToMovement = true;
-	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
+	GetCharacterMovement()->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
+	GetCharacterMovement()->AirControl = 0.35f;
+
+	// testing gravity
+	DefaultGravityScale = 1.75f;
+	GetCharacterMovement()->GravityScale = DefaultGravityScale;
 
 	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
 	// instead of recompiling to adjust them
@@ -63,6 +73,24 @@ ABunny_Third_PersonCharacter::ABunny_Third_PersonCharacter()
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
 }
 
+void ABunny_Third_PersonCharacter::BeginPlay()
+{
+	Super::BeginPlay();
+
+	DefaultGravityScale = GetCharacterMovement()->GravityScale;
+	bCanAirDash = true;
+}
+
+void ABunny_Third_PersonCharacter::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (bIsDashing)
+	{
+		GetCharacterMovement()->Velocity = DashDirection * DashSpeed;
+	}
+}
+
 void ABunny_Third_PersonCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	// Set up action bindings
@@ -74,6 +102,8 @@ void ABunny_Third_PersonCharacter::SetupPlayerInputComponent(UInputComponent* Pl
 
 		// Moving
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ABunny_Third_PersonCharacter::Move);
+		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Completed, this, &ABunny_Third_PersonCharacter::MoveCompleted);
+		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Canceled, this, &ABunny_Third_PersonCharacter::MoveCompleted);
 		EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &ABunny_Third_PersonCharacter::Look);
 
 		// Looking
@@ -81,6 +111,9 @@ void ABunny_Third_PersonCharacter::SetupPlayerInputComponent(UInputComponent* Pl
 
 		// Grab
 		EnhancedInputComponent->BindAction(GrabAction, ETriggerEvent::Started, this, & ABunny_Third_PersonCharacter::DoGrab);
+
+		// Dash
+		EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::StartDash);
 	}
 	else
 	{
@@ -91,10 +124,16 @@ void ABunny_Third_PersonCharacter::SetupPlayerInputComponent(UInputComponent* Pl
 void ABunny_Third_PersonCharacter::Move(const FInputActionValue& Value)
 {
 	// input is a Vector2D
-	FVector2D MovementVector = Value.Get<FVector2D>();
+	CurrentMoveInput = Value.Get<FVector2D>();
 
-	// route the input
-	DoMove(MovementVector.X, MovementVector.Y);
+	if (bIsDashing) return;
+	
+	DoMove(CurrentMoveInput.X, CurrentMoveInput.Y);
+}
+
+void ABunny_Third_PersonCharacter::MoveCompleted(const FInputActionValue& Value)
+{
+	CurrentMoveInput = FVector2D::ZeroVector;
 }
 
 void ABunny_Third_PersonCharacter::Look(const FInputActionValue& Value)
@@ -166,21 +205,51 @@ void ABunny_Third_PersonCharacter::DoJumpStart()
 		FVector Origin, BoxExtent; 
 		HeldGrabObject->GetActorBounds(true, Origin, BoxExtent);
 
-		// Posistion the box 
-		const FVector DropLocation = FVector(
-			PlayerLocation.X,
-			PlayerLocation.Y,
-			CapsuleBottomZ - BoxExtent.Z - 10.0f
+		// -- RAYCAST for ground
+		FHitResult GroundHit;
+		FVector TraceStart = PlayerLocation;
+
+		float TraceDistance = CapsuleHalfHeight + (BoxExtent.Z * 2.0f) + 100.0f;
+		FVector TraceEnd = TraceStart - FVector(0.0f, 0.0f, TraceDistance);
+
+		FCollisionQueryParams QueryParams;
+		QueryParams.AddIgnoredActor(this);
+		QueryParams.AddIgnoredActor(HeldGrabObject);
+
+		FCollisionObjectQueryParams ObjectParams; 
+		ObjectParams.AddObjectTypesToQuery(ECC_WorldStatic);
+		ObjectParams.AddObjectTypesToQuery(ECC_WorldDynamic);
+
+		bool bHitGround = GetWorld()->LineTraceSingleByObjectType(
+			GroundHit,
+			TraceStart,
+			TraceEnd,
+			ObjectParams,
+			QueryParams
 		);
 
-		FVector DownwardImpulse = FVector(0.0f, 0.0f, -ObjectDownImpulse); // hold
-		HeldGrabObject->PlaceAndDrop(DropLocation, DownwardImpulse); //HeldGrabObject->DropAndImpulse(DownwardImpulse); ** Remove Test add this
+		// Mid-air placement
+		FVector FinelBoxLocation = FVector(PlayerLocation.X, PlayerLocation.Y, CapsuleBottomZ - BoxExtent.Z - 10.0f);
+		FVector FinelImpulse = FVector(0.0f, 0.0f, -ObjectDownImpulse); // hold
+
+		//Place Objcet on ground whem raycast is close to the ground 
+		if (bHitGround)
+		{
+			const float GroundZ = GroundHit.ImpactPoint.Z;
+			const float MinBoxZ = GroundZ + BoxExtent.Z + 1.0f;
+
+			if (FinelBoxLocation.Z < MinBoxZ)
+			{
+				FinelBoxLocation.Z = MinBoxZ;
+				FinelImpulse = FVector::ZeroVector;
+			}
+		}
+		
+		HeldGrabObject->PlaceAndDrop(FinelBoxLocation, FinelImpulse);
+		HeldGrabObject = nullptr;
 		/**
 		Test code end
 		*/
-
-		// Clear hand 
-		HeldGrabObject = nullptr;
 
 		// The jump
 		LaunchCharacter(FVector(0.0f, 0.0f, ObjectJumpBoost), false, true);
@@ -210,3 +279,74 @@ void ABunny_Third_PersonCharacter::DoGrab()
 		HeldGrabObject->GrabObject(GetMesh(), FName("right_hand"));
 	}
 }
+
+void ABunny_Third_PersonCharacter::StartDash()
+{
+	if (bIsDashing || bDashOnCoolDown) return;
+
+	const bool bIsGrounded = GetCharacterMovement()->IsMovingOnGround();
+
+	// only one air dash
+	if (!bIsGrounded)
+	{
+		if (!bCanAirDash) return;
+		bCanAirDash = false;
+	}
+
+	// cheack if player press (WASD)
+	if (!CurrentMoveInput.IsNearlyZero()) 
+	{
+		FRotator ControlRot = Controller ? Controller->GetControlRotation() : GetActorRotation();
+		FRotator YawRot(0.f, ControlRot.Yaw, 0.f);
+
+		const FVector CameraFoward = FRotationMatrix(YawRot).GetUnitAxis(EAxis::X);
+		const FVector CameraRight = FRotationMatrix(YawRot).GetUnitAxis(EAxis::Y);
+
+		DashDirection = (CameraFoward * CurrentMoveInput.Y) + (CameraRight * CurrentMoveInput.X);
+	}
+	else { // Dash where Model is looking 
+		DashDirection = GetActorForwardVector();
+	}
+	
+	DashDirection.Z = 0.0f;
+	DashDirection.Normalize();
+
+	//Rotate the player to the dash
+	FRotator FaceRotate = DashDirection.Rotation();
+	FaceRotate.Pitch = 0.0f;
+	FaceRotate.Roll = 0.0f;
+	SetActorRotation(FaceRotate);
+
+	bIsDashing = true;
+	bDashOnCoolDown = true;
+
+	GetCharacterMovement()->GravityScale = 0.0f;
+	GetCharacterMovement()->Velocity = DashDirection * DashSpeed;
+
+	GetWorldTimerManager().SetTimer(DashTimeHandle, this, &ABunny_Third_PersonCharacter::StopDash, DashDuration, false);
+	GetWorldTimerManager().SetTimer(DashCooldownTimerHandle, this, &ABunny_Third_PersonCharacter::ResetDashCooldown, DashDuration, false);
+}
+
+void ABunny_Third_PersonCharacter::StopDash()
+{
+	if (!bIsDashing) return;
+	
+	bIsDashing = false;
+
+	GetCharacterMovement()->GravityScale = DefaultGravityScale;
+	FVector CurrentVel = GetCharacterMovement()->Velocity;
+	GetCharacterMovement()->Velocity = CurrentVel.GetClampedToMaxSize(DashExitSpeed);
+}
+
+void ABunny_Third_PersonCharacter::ResetDashCooldown()
+{
+	bDashOnCoolDown = false;
+}
+
+void ABunny_Third_PersonCharacter::Landed(const FHitResult& Hit)
+{
+	Super::Landed(Hit);
+
+	bCanAirDash = true;
+}
+

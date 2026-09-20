@@ -115,11 +115,16 @@ void ABP_ObjectGrab::PlaceAndDrop(const FVector& TargetLocation, const FVector& 
 	bIsHeld = false;
 
 	MyObjectBox->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+
 	SetActorLocation(TargetLocation, false, nullptr, ETeleportType::TeleportPhysics);
+
 	MyObjectBox->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
 	MyObjectBox->SetSimulatePhysics(true);
+	MyObjectBox->SetPhysicsLinearVelocity(FVector::ZeroVector);
 
-	MyObjectBox->AddImpulse(Impulse, NAME_None, true);
-
+	if (!Impulse.IsNearlyZero()) 
+	{
+		MyObjectBox->AddImpulse(Impulse, NAME_None, true);
+	}
 }
 

@@ -36,7 +36,6 @@ class ABunny_Third_PersonCharacter : public ACharacter
 	USceneComponent* HoldPoint;
 
 protected:
-
 	/** Jump Input Action */
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* JumpAction;
@@ -57,6 +56,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* GrabAction;
 
+	/** Dash Input Action */
+	UPROPERTY(EditAnywhere, Category="Input")
+	UInputAction* DashAction;
+
 
 public:
 
@@ -64,12 +67,18 @@ public:
 	ABunny_Third_PersonCharacter();	
 
 protected:
+	virtual void BeginPlay() override;
+
+	virtual void Tick(float DeltaTime) override;
 
 	/** Initialize input action bindings */
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 	/** Called for movement input */
 	void Move(const FInputActionValue& Value);
+
+	/** movement input ends */
+	void MoveCompleted(const FInputActionValue& Value);
 
 	/** Called for looking input */
 	void Look(const FInputActionValue& Value);
@@ -82,10 +91,38 @@ protected:
 
 	/** Momentum for the object jump */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Jump", meta = (AllowAbstract = "true"))
-	float ObjectJumpBoost = 700.0f;
+	float ObjectJumpBoost = 800.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, CateGOry = "Jump", meta = (AllowAbstract = "true"))
-	float ObjectDownImpulse = 800.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Jump", meta = (AllowAbstract = "true"))
+	float ObjectDownImpulse = 500.0f;
+
+	/** Dash Input Values */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash", meta = (ClampMin = "500.0"))
+	float DashSpeed = 1500.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash", meta = (ClampMin = "0.05", ClampMax = "0.5"))
+	float DashDuration = 0.35;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash", meta = (ClampMin = "0.0"))
+	float DashCooldown = 0.35f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash")
+	float DashExitSpeed = 800.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash")
+	bool bIsDashing = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash")
+	bool bCanAirDash = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash")
+	bool bDashOnCoolDown = false;
+
+	FVector2D CurrentMoveInput;
+	FVector DashDirection;
+	float DefaultGravityScale;
+	FTimerHandle DashTimeHandle;
+	FTimerHandle DashCooldownTimerHandle;
 
 public:
 
@@ -108,6 +145,15 @@ public:
 	/** Grab input */
 	UFUNCTION(BlueprintCallable, Category = "Input")
 	virtual void DoGrab();
+
+	/** Handles Dash Input */
+	UFUNCTION(BlueprintCallable, Category = "Input")
+	virtual void StartDash();
+	UFUNCTION(BlueprintCallable, Category = "Input")
+	virtual void StopDash();
+	UFUNCTION()
+	void ResetDashCooldown();
+	virtual void Landed(const FHitResult& Hit) override;
 
 	/** Handle overlaping for object */
 	void SetNearbyGrabObject(ABP_ObjectGrab* Object) { NearbyGrabObject = Object; }
