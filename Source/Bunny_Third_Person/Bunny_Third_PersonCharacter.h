@@ -101,7 +101,7 @@ protected:
 	float DashSpeed = 1500.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash", meta = (ClampMin = "0.05", ClampMax = "0.5"))
-	float DashDuration = 0.35;
+	float DashDuration = 0.35f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash", meta = (ClampMin = "0.0"))
 	float DashCooldown = 0.35f;
@@ -123,6 +123,21 @@ protected:
 	float DefaultGravityScale;
 	FTimerHandle DashTimeHandle;
 	FTimerHandle DashCooldownTimerHandle;
+
+	/** Sprint Input Values */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sprint")
+	float SprintSpeed = 900.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sprint")
+	float WalkSpeed = 500.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sprint", meta = (ClampMin = "0.1", ClampMax = "0.5"))
+	float HoldToRunThresHold = 0.2f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Sprint")
+	bool bIsSprinting = false;
+
+	FTimerHandle HoldToRunTimerHandle;
 
 public:
 
@@ -154,6 +169,13 @@ public:
 	UFUNCTION()
 	void ResetDashCooldown();
 	virtual void Landed(const FHitResult& Hit) override;
+
+	/** Run handles */
+	void OnDashButtonPressed();
+	void OnDashButtonReleased();
+
+	void StartSprint();
+	void StopSprint();
 
 	/** Handle overlaping for object */
 	void SetNearbyGrabObject(ABP_ObjectGrab* Object) { NearbyGrabObject = Object; }

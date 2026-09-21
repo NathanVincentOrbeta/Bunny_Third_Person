@@ -78,6 +78,7 @@ void ABunny_Third_PersonCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	DefaultGravityScale = GetCharacterMovement()->GravityScale;
+	WalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
 	bCanAirDash = true;
 }
 
@@ -113,7 +114,9 @@ void ABunny_Third_PersonCharacter::SetupPlayerInputComponent(UInputComponent* Pl
 		EnhancedInputComponent->BindAction(GrabAction, ETriggerEvent::Started, this, & ABunny_Third_PersonCharacter::DoGrab);
 
 		// Dash
-		EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::StartDash);
+		EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::OnDashButtonPressed);
+		EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Completed, this, &ABunny_Third_PersonCharacter::OnDashButtonReleased);
+		EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Canceled, this, &ABunny_Third_PersonCharacter::OnDashButtonReleased);
 	}
 	else
 	{
@@ -324,7 +327,7 @@ void ABunny_Third_PersonCharacter::StartDash()
 	GetCharacterMovement()->Velocity = DashDirection * DashSpeed;
 
 	GetWorldTimerManager().SetTimer(DashTimeHandle, this, &ABunny_Third_PersonCharacter::StopDash, DashDuration, false);
-	GetWorldTimerManager().SetTimer(DashCooldownTimerHandle, this, &ABunny_Third_PersonCharacter::ResetDashCooldown, DashDuration, false);
+	GetWorldTimerManager().SetTimer(DashCooldownTimerHandle, this, &ABunny_Third_PersonCharacter::ResetDashCooldown, DashDuration + DashCooldown, false);
 }
 
 void ABunny_Third_PersonCharacter::StopDash()
@@ -348,5 +351,53 @@ void ABunny_Third_PersonCharacter::Landed(const FHitResult& Hit)
 	Super::Landed(Hit);
 
 	bCanAirDash = true;
+}
+
+void ABunny_Third_PersonCharacter::OnDashButtonPressed()
+{
+	if (bIsDashing) return;
+
+	//Set Timer
+	GetWorldTimerManager().SetTimer(
+		HoldToRunTimerHandle,
+		this,
+		&ABunny_Third_PersonCharacter::StartSprint,
+		HoldToRunThresHold,
+		false
+	);
+
+}
+
+void ABunny_Third_PersonCharacter::OnDashButtonReleased()
+{
+	//Reset Timer
+	const bool bWasTap = GetWorldTimerManager().IsTimerActive(HoldToRunTimerHandle);
+	GetWorldTimerManager().ClearTimer(HoldToRunTimerHandle);
+
+	if (bIsSprinting)
+	{
+		StopSprint();
+	}
+	else if (bWasTap)
+	{
+		StartDash();
+	}
+}
+
+void ABunny_Third_PersonCharacter::StartSprint()
+{
+	if (!GetCharacterMovement()->IsMovingOnGround())
+	{
+		return;
+	}
+
+	bIsSprinting = true;
+	GetCharacterMovement()->MaxWalkSpeed = SprintSpeed;
+}
+
+void ABunny_Third_PersonCharacter::StopSprint()
+{
+	bIsSprinting = false;
+	GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
 }
 
