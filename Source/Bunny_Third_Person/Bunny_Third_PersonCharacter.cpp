@@ -13,6 +13,7 @@
 #include "Bunny_Third_Person.h"
 #include "Kismet/KismetMathLibrary.h"
 #include <BP_ObjectGrab.h>
+#include "CombatComponent.h"
 
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
@@ -71,6 +72,9 @@ ABunny_Third_PersonCharacter::ABunny_Third_PersonCharacter()
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
+
+	// Nathan - Creating Combat Component
+	CombatComp = CreateDefaultSubobject<UCombatComponent>(TEXT("CombatComponent"));
 }
 
 void ABunny_Third_PersonCharacter::BeginPlay()
@@ -117,6 +121,9 @@ void ABunny_Third_PersonCharacter::SetupPlayerInputComponent(UInputComponent* Pl
 		EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::OnDashButtonPressed);
 		EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Completed, this, &ABunny_Third_PersonCharacter::OnDashButtonReleased);
 		EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Canceled, this, &ABunny_Third_PersonCharacter::OnDashButtonReleased);
+
+		// Attacking
+		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoAttack);
 	}
 	else
 	{
@@ -401,3 +408,11 @@ void ABunny_Third_PersonCharacter::StopSprint()
 	GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
 }
 
+// Nathan - Attack Function
+void ABunny_Third_PersonCharacter::DoAttack() {
+
+	if (CombatComp) {
+
+		CombatComp->Attack();
+	}
+}

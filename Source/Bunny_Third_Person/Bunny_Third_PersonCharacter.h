@@ -12,6 +12,7 @@ class UCameraComponent;
 class UInputAction;
 class ABP_ObjectGrab;
 struct FInputActionValue;
+class UCombatComponent; // Nathan Combat Component forward Declaration
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
@@ -34,6 +35,10 @@ class ABunny_Third_PersonCharacter : public ACharacter
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	USceneComponent* HoldPoint;
+
+	// Nathan CombatComponent
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UCombatComponent* CombatComp;
 
 protected:
 	/** Jump Input Action */
@@ -60,6 +65,8 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Input")
 	UInputAction* DashAction;
 
+	UPROPERTY(EditAnywhere, Category = "Input")
+	UInputAction* AttackAction;
 
 public:
 
@@ -82,6 +89,8 @@ protected:
 
 	/** Called for looking input */
 	void Look(const FInputActionValue& Value);
+
+	void DoAttack();
 
 	UPROPERTY(VisibleInstanceOnly, Category = "Grab")
 	ABP_ObjectGrab* HeldGrabObject;
