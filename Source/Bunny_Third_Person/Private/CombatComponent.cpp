@@ -1,6 +1,7 @@
 #include "CombatComponent.h"
 #include "GameFramework/Character.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Engine/DamageEvents.h"
 
 UCombatComponent::UCombatComponent() {
 
@@ -52,7 +53,18 @@ void UCombatComponent::PerformAttackTrace() {
 
 	if (bHit && HitResult.GetActor()) {
 
+		AActor* HitActor = HitResult.GetActor();
+
+		// Apply damage to the hit actor if it implements the TakeDamage function
 		UE_LOG(LogTemp, Log, TEXT("CombatComponent Hit: %s"), *HitResult.GetActor()->GetName());
+
+		//HitActor->TakeDamage(20.0f, FDamageEvent(), GetOwner()->GetInstigatorController(), GetOwner());
+		//AController* AttackController = GetOwner()->GetInstigatorController();
+
+		APawn* InstigatorPawn = GetOwner()->GetInstigator();
+		AController* Controller = InstigatorPawn ? InstigatorPawn->GetController() : nullptr;
+
+		HitActor->TakeDamage(20.0f, FDamageEvent(), Controller, GetOwner());
 	}
 }
 
