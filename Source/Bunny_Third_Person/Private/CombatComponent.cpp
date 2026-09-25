@@ -64,7 +64,7 @@ void UCombatComponent::PerformAttackTrace() {
 		APawn* InstigatorPawn = GetOwner()->GetInstigator();
 		AController* Controller = InstigatorPawn ? InstigatorPawn->GetController() : nullptr;
 
-		HitActor->TakeDamage(20.0f, FDamageEvent(), Controller, GetOwner());
+		HitActor->TakeDamage(100.0f, FDamageEvent(), Controller, GetOwner());
 	}
 }
 
