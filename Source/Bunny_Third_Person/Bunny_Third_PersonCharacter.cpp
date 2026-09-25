@@ -295,13 +295,25 @@ void ABunny_Third_PersonCharacter::StartDash()
 	if (bIsDashing || bDashOnCoolDown) return;
 
 	const bool bIsGrounded = GetCharacterMovement()->IsMovingOnGround();
+	bool bIsObjectAirDash = false;
 
-	// only one air dash
+	// Dash Logic 
 	if (!bIsGrounded)
 	{
-		if (!bCanAirDash) return;
-		bCanAirDash = false;
+		if (bCanAirDash)
+		{
+			bCanAirDash = false;
+		} 
+		else if (HeldGrabObject)
+		{
+			bIsObjectAirDash = true;
+		}
+		else
+		{
+			return;
+		}
 	}
+
 
 	// cheack if player press (WASD)
 	if (!CurrentMoveInput.IsNearlyZero()) 
@@ -309,10 +321,10 @@ void ABunny_Third_PersonCharacter::StartDash()
 		FRotator ControlRot = Controller ? Controller->GetControlRotation() : GetActorRotation();
 		FRotator YawRot(0.f, ControlRot.Yaw, 0.f);
 
-		const FVector CameraFoward = FRotationMatrix(YawRot).GetUnitAxis(EAxis::X);
+		const FVector CameraForward = FRotationMatrix(YawRot).GetUnitAxis(EAxis::X);
 		const FVector CameraRight = FRotationMatrix(YawRot).GetUnitAxis(EAxis::Y);
 
-		DashDirection = (CameraFoward * CurrentMoveInput.Y) + (CameraRight * CurrentMoveInput.X);
+		DashDirection = (CameraForward * CurrentMoveInput.Y) + (CameraRight * CurrentMoveInput.X);
 	}
 	else { // Dash where Model is looking 
 		DashDirection = GetActorForwardVector();
@@ -326,6 +338,35 @@ void ABunny_Third_PersonCharacter::StartDash()
 	FaceRotate.Pitch = 0.0f;
 	FaceRotate.Roll = 0.0f;
 	SetActorRotation(FaceRotate);
+
+	// Air Dash Logic	
+	if (bIsObjectAirDash && HeldGrabObject)
+	{
+		FVector Origin, BoxExtent;
+		HeldGrabObject->GetActorBounds(true, Origin, BoxExtent);
+
+		// Send Object Behind Player
+		const float OffsetDistance = GetCapsuleComponent()->GetScaledCapsuleRadius() + FMath::Max(BoxExtent.X, BoxExtent.Y) + 20.0f;
+		const FVector TraceStart = GetActorLocation();
+		const FVector TraceEnd = TraceStart - (DashDirection * OffsetDistance);
+
+		// Prevent clipping 
+		FHitResult WallHit;
+		FCollisionQueryParams QueryParams;
+		QueryParams.AddIgnoredActor(this);
+		QueryParams.AddIgnoredActor(HeldGrabObject);
+
+		FVector DropLocation = TraceEnd;
+		if (GetWorld()->LineTraceSingleByChannel(WallHit, TraceStart, TraceEnd, ECollisionChannel::ECC_WorldStatic, QueryParams))
+		{
+			DropLocation = WallHit.Location + (DashDirection * 10.0f);
+		}
+
+		//Push Object
+		const FVector PushImpulse = -DashDirection * ObjectDownImpulse;
+		HeldGrabObject->PlaceAndDrop(DropLocation, PushImpulse);
+		HeldGrabObject = nullptr;
+	}
 
 	bIsDashing = true;
 	bDashOnCoolDown = true;
@@ -393,10 +434,7 @@ void ABunny_Third_PersonCharacter::OnDashButtonReleased()
 
 void ABunny_Third_PersonCharacter::StartSprint()
 {
-	if (!GetCharacterMovement()->IsMovingOnGround())
-	{
-		return;
-	}
+	if (!GetCharacterMovement()->IsMovingOnGround()) return;
 
 	bIsSprinting = true;
 	GetCharacterMovement()->MaxWalkSpeed = SprintSpeed;

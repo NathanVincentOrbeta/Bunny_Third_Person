@@ -100,7 +100,7 @@ protected:
 
 	/** Momentum for the object jump */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Jump", meta = (AllowAbstract = "true"))
-	float ObjectJumpBoost = 800.0f;
+	float ObjectJumpBoost = 1500.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Jump", meta = (AllowAbstract = "true"))
 	float ObjectDownImpulse = 500.0f;
@@ -122,7 +122,7 @@ protected:
 	bool bIsDashing = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash")
-	bool bCanAirDash = true;
+	bool bCanAirDash = true; 
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Dash")
 	bool bDashOnCoolDown = false;
