@@ -90,9 +90,33 @@ void ABunny_Third_PersonCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// Dash Logic
 	if (bIsDashing)
 	{
 		GetCharacterMovement()->Velocity = DashDirection * DashSpeed;
+	}
+
+	//Wall Jump Logic
+	bCanWallJump = false;
+	if (GetCharacterMovement()->IsFalling())
+	{
+		//Near Walls 
+		FHitResult HitResult;
+		FVector Start = GetCapsuleComponent()->GetComponentLocation();
+		FVector End = Start + (GetActorForwardVector() * 50.0f);
+
+		FCollisionQueryParams TraceParams(FName(TEXT("WallJumpTrace")), true, this);
+		TraceParams.bReturnPhysicalMaterial = false;
+		TraceParams.AddIgnoredActor(this);
+
+		if (GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_WorldStatic, TraceParams))
+		{
+			if (FMath::Abs(HitResult.Normal.Z) < 0.5f)
+			{
+				WallNormal = HitResult.Normal;
+				bCanWallJump = true;
+			}
+		}
 	}
 }
 
@@ -102,8 +126,10 @@ void ABunny_Third_PersonCharacter::SetupPlayerInputComponent(UInputComponent* Pl
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
 		
 		// Jumping
+		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoWallJumpLedge);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoJumpStart);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ABunny_Third_PersonCharacter::DoJumpEnd);
+		
 
 		// Moving
 		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ABunny_Third_PersonCharacter::Move);
@@ -314,7 +340,6 @@ void ABunny_Third_PersonCharacter::StartDash()
 		}
 	}
 
-
 	// cheack if player press (WASD)
 	if (!CurrentMoveInput.IsNearlyZero()) 
 	{
@@ -401,6 +426,22 @@ void ABunny_Third_PersonCharacter::Landed(const FHitResult& Hit)
 	bCanAirDash = true;
 }
 
+void ABunny_Third_PersonCharacter::DoWallJumpLedge()
+{
+	if (bCanWallJump)
+	{
+		// Calculate Jump direction
+		const FVector JumpDirection = WallNormal * 600.0f + FVector(0, 0, 1000.0f);
+		LaunchCharacter(JumpDirection, true, true);
+
+		// Rotate character away from wall
+		const FRotator NewRotation = WallNormal.Rotation();
+		SetActorRotation(NewRotation);
+
+		bCanWallJump = false;
+	}
+}
+
 void ABunny_Third_PersonCharacter::OnDashButtonPressed()
 {
 	if (bIsDashing) return;
@@ -447,7 +488,8 @@ void ABunny_Third_PersonCharacter::StopSprint()
 }
 
 // Nathan - Attack Function
-void ABunny_Third_PersonCharacter::DoAttack() {
+void ABunny_Third_PersonCharacter::DoAttack() 
+{
 
 	if (CombatComp) {
 

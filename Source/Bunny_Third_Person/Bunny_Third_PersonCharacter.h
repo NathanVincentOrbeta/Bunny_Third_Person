@@ -100,7 +100,7 @@ protected:
 
 	/** Momentum for the object jump */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Jump", meta = (AllowAbstract = "true"))
-	float ObjectJumpBoost = 1500.0f;
+	float ObjectJumpBoost = 800.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Jump", meta = (AllowAbstract = "true"))
 	float ObjectDownImpulse = 500.0f;
@@ -148,6 +148,10 @@ protected:
 
 	FTimerHandle HoldToRunTimerHandle;
 
+	/** Wall Jump Input Values */
+	bool bCanWallJump = false;
+	FVector WallNormal; 
+
 public:
 
 	/** Handles move inputs from either controls or UI interfaces */
@@ -178,6 +182,10 @@ public:
 	UFUNCTION()
 	void ResetDashCooldown();
 	virtual void Landed(const FHitResult& Hit) override;
+
+	/** Handles Wall-Jump/Ledge */
+	UFUNCTION(BlueprintCallable, Category = "Input")
+	virtual void DoWallJumpLedge();
 
 	/** Run handles */
 	void OnDashButtonPressed();
