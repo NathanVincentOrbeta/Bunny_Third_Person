@@ -90,31 +90,76 @@ void ABunny_Third_PersonCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	bJustWallJumped = false;
+
 	// Dash Logic
 	if (bIsDashing)
 	{
 		GetCharacterMovement()->Velocity = DashDirection * DashSpeed;
+		return;
 	}
 
-	//Wall Jump Logic
-	bCanWallJump = false;
-	if (GetCharacterMovement()->IsFalling())
+	//Movement Wall Logic
+	if (bIsWallSliding)
 	{
-		//Near Walls 
-		FHitResult HitResult;
-		FVector Start = GetCapsuleComponent()->GetComponentLocation();
-		FVector End = Start + (GetActorForwardVector() * 50.0f);
+		// Trace if contact is maintained 
+		FHitResult SlideHit;
+		FVector Start = GetActorLocation();
+		FVector End = Start - (WallNormal * 60.0f);
 
-		FCollisionQueryParams TraceParams(FName(TEXT("WallJumpTrace")), true, this);
-		TraceParams.bReturnPhysicalMaterial = false;
+		FCollisionQueryParams TraceParams(FName(TEXT("WallSlideTrace")), true, this);
 		TraceParams.AddIgnoredActor(this);
 
-		if (GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_WorldStatic, TraceParams))
+		const bool bHitWall = GetWorld()->LineTraceSingleByChannel(SlideHit, Start, End, ECC_WorldStatic, TraceParams);
+
+		if (bHitWall && FMath::Abs(SlideHit.Normal.Z) < 0.35f)
 		{
-			if (FMath::Abs(HitResult.Normal.Z) < 0.5f)
+			WallNormal = SlideHit.Normal;
+
+			const bool bPushIntoWall = IsPushingIntoWall();
+
+			if (bPushIntoWall && !bHasWallStick)
 			{
-				WallNormal = HitResult.Normal;
-				bCanWallJump = true;
+				StartWallStick();
+			}
+			if (bIsWallStick && !bPushIntoWall)
+			{
+				OnWallStickEnd();
+			}
+
+			// Stick to the wall for sec
+			if (bIsWallStick)
+			{
+				GetCharacterMovement()->Velocity = FVector::ZeroVector;
+			}
+			else
+			{
+				GetCharacterMovement()->Velocity = FVector(0.0f, 0.0f, -WallSlideSpeed);
+			}
+		}
+		else
+		{
+			StopWallSlide();
+		}
+	}
+	else if (GetCharacterMovement()->IsFalling())
+	{
+		// looking for wall when falling
+		if (GetCharacterMovement()-> Velocity.Z <= 50.0f)
+		{
+			FHitResult HitResult;
+			FVector Start = GetCapsuleComponent()->GetComponentLocation();
+			FVector End = Start + (GetActorForwardVector() * 55.0f);
+
+			FCollisionQueryParams TraceParams(FName(TEXT("WallJumpTrace")), true, this);
+			TraceParams.AddIgnoredActor(this);
+
+			if (GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_WorldStatic, TraceParams))
+			{
+				if (FMath::Abs(HitResult.Normal.Z) < 0.35f)
+				{
+					StartWallSlide(HitResult.Normal);
+				}
 			}
 		}
 	}
@@ -213,6 +258,12 @@ void ABunny_Third_PersonCharacter::DoLook(float Yaw, float Pitch)
 
 void ABunny_Third_PersonCharacter::DoJumpStart()
 {
+	// No Object movement on a wall 
+	if (bJustWallJumped || bIsWallSliding)
+	{
+		return;
+	}
+
 	// signal the character to jump
 	if (CanJump())
 	{
@@ -320,6 +371,8 @@ void ABunny_Third_PersonCharacter::StartDash()
 {
 	if (bIsDashing || bDashOnCoolDown) return;
 
+	StopWallSlide();
+
 	const bool bIsGrounded = GetCharacterMovement()->IsMovingOnGround();
 	bool bIsObjectAirDash = false;
 
@@ -423,23 +476,100 @@ void ABunny_Third_PersonCharacter::Landed(const FHitResult& Hit)
 {
 	Super::Landed(Hit);
 
+	StopWallSlide();
 	bCanAirDash = true;
 }
 
 void ABunny_Third_PersonCharacter::DoWallJumpLedge()
 {
-	if (bCanWallJump)
+	if (bCanWallJump || bIsWallSliding)
 	{
+		StopWallSlide();
+
 		// Calculate Jump direction
-		const FVector JumpDirection = WallNormal * 600.0f + FVector(0, 0, 1000.0f);
+		const FVector JumpDirection = (WallNormal * WallJumpHorizontalForce) + FVector(0.0f, 0.0f, WallJumpVerticalForce);
 		LaunchCharacter(JumpDirection, true, true);
 
-		// Rotate character away from wall
+		GEngine->AddOnScreenDebugMessage(-1, 0.5f, FColor::Black, TEXT("Wall Jump"));
+
+		// Rotate character away from wall ??? change for the animation 
 		const FRotator NewRotation = WallNormal.Rotation();
 		SetActorRotation(NewRotation);
 
 		bCanWallJump = false;
 	}
+}
+
+void ABunny_Third_PersonCharacter::StartWallSlide(const FVector& HitNormal)
+{
+	bIsWallSliding = true;
+	bCanWallJump = true;
+	bIsWallStick = false;
+	bHasWallStick = false;
+	WallNormal = HitNormal;
+
+	FRotator FaceWallRotation = (-WallNormal).Rotation();
+	FaceWallRotation.Pitch = 0.0f;
+	FaceWallRotation.Roll = 0.0f;
+	SetActorRotation(FaceWallRotation);
+
+	GetCharacterMovement()->GravityScale = 0.0f;
+
+	if (IsPushingIntoWall())
+	{
+		StartWallStick();
+	}
+	else
+	{
+		GetCharacterMovement()->Velocity = FVector(0.0f, 0.0f, -WallSlideSpeed);
+	}
+}
+
+void ABunny_Third_PersonCharacter::StartWallStick()
+{
+	bIsWallStick = true;
+	bHasWallStick = true;
+	GetCharacterMovement()->Velocity = FVector::ZeroVector;
+
+	GetWorldTimerManager().ClearTimer(WallStickTimeHandle);
+	GetWorldTimerManager().SetTimer(WallStickTimeHandle, 
+		this, &ABunny_Third_PersonCharacter::OnWallStickEnd, 
+		WallStickDuration, false);
+}
+
+void ABunny_Third_PersonCharacter::OnWallStickEnd()
+{
+	bIsWallStick = false;
+	GetWorldTimerManager().ClearTimer(WallStickTimeHandle);
+}
+
+void ABunny_Third_PersonCharacter::StopWallSlide()
+{
+	if (!bIsWallSliding && !bCanWallJump) return;
+
+	bIsWallSliding = false;
+	bIsWallStick = false;
+	bCanWallJump = false;
+	bHasWallStick = false;
+
+	GetWorldTimerManager().ClearTimer(WallStickTimeHandle);
+	GetCharacterMovement()->GravityScale = DefaultGravityScale;
+}
+
+bool ABunny_Third_PersonCharacter::IsPushingIntoWall() const
+{
+	if (CurrentMoveInput.IsNearlyZero() || GetController() == nullptr)
+	{
+		return false;
+	}
+	
+	// Calculate the World space movement input direction 
+	const FRotator YawRotation(0.0f, GetController()->GetControlRotation().Yaw, 0.0f);
+	const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+	const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+	const FVector InputWorldDir = (ForwardDirection * CurrentMoveInput.Y + RightDirection * CurrentMoveInput.X).GetSafeNormal();
+
+	return FVector::DotProduct(InputWorldDir, WallNormal) < -0.4f;
 }
 
 void ABunny_Third_PersonCharacter::OnDashButtonPressed()

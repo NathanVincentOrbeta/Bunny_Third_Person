@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #pragma once
 
 #include "CoreMinimal.h"
@@ -148,9 +146,36 @@ protected:
 
 	FTimerHandle HoldToRunTimerHandle;
 
-	/** Wall Jump Input Values */
+	/** All wall logic values */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wall Jump")
 	bool bCanWallJump = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wall Jump")
+	bool bIsWallSliding = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wall Jump")
+	bool bIsWallStick = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Wall Jump")
+	bool bHasWallStick = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wall Jump")
+	float WallStickDuration = 0.5f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wall Jump")
+	float WallSlideSpeed = 160.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wall Jump")
+	float WallJumpHorizontalForce = 650.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Wall Jump")
+	float WallJumpVerticalForce = 850.0f;
+
 	FVector WallNormal; 
+	FTimerHandle WallStickTimeHandle;
+	bool bJustWallJumped = false;
+
+	bool IsPushingIntoWall() const;
 
 public:
 
@@ -183,9 +208,13 @@ public:
 	void ResetDashCooldown();
 	virtual void Landed(const FHitResult& Hit) override;
 
-	/** Handles Wall-Jump/Ledge */
+	/** Handles Wall logics */
 	UFUNCTION(BlueprintCallable, Category = "Input")
 	virtual void DoWallJumpLedge();
+	void StartWallSlide(const FVector& HitNormal);
+	void StopWallSlide();
+	void StartWallStick();
+	void OnWallStickEnd();
 
 	/** Run handles */
 	void OnDashButtonPressed();
