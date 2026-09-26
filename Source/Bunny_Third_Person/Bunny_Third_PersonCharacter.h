@@ -177,6 +177,32 @@ protected:
 
 	bool IsPushingIntoWall() const;
 
+	/** Ledge Grab Properties */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ledge Grab")
+	bool bIsLedgeHanging = false;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ledge Grab")
+	bool bCanLedgeGrab = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ledge Grab")
+	float LedgeGrabForwardReach = 60.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ledge Grab")
+	float LedgeGrabTraceHeight = 60.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ledge Grab")
+	float LedgeHangVerticalOffset = 50.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ledge Grab")
+	float LedgeGrabCooldown = 0.4f;
+
+	FTimerHandle LedgeCooldownTimerHandle;
+
+	FVector LedgeLocation;
+	FVector LedgeWallNormal; 
+
+	bool DetectLedge(FVector& OutLedgeLoc, FVector& OutWallNormal);
+
 public:
 
 	/** Handles move inputs from either controls or UI interfaces */
@@ -226,6 +252,15 @@ public:
 	/** Handle overlaping for object */
 	void SetNearbyGrabObject(ABP_ObjectGrab* Object) { NearbyGrabObject = Object; }
 	void ClearNearbyGrabObject(ABP_ObjectGrab* Object) { if (NearbyGrabObject == Object) NearbyGrabObject = nullptr; }
+
+	/** Ledge Function */
+	void StartLedgeGrab(const FVector& InLedgeLoc, const FVector& InWallNormal);
+	void DropFromLedge();
+	void ClimbUpLedge();
+	void ResetLedgeGrabCooldown();
+
+	UFUNCTION(BlueprintPure, Category = "Ledge Grab")
+	bool IsLedgeHanging() const { return bIsLedgeHanging; }
 
 public:
 

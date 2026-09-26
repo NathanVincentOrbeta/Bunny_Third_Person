@@ -99,6 +99,22 @@ void ABunny_Third_PersonCharacter::Tick(float DeltaTime)
 		return;
 	}
 
+	if (bIsLedgeHanging)
+	{
+		GetCharacterMovement()->Velocity = FVector::ZeroVector;
+		return;
+	}
+
+	if (bCanLedgeGrab && GetCharacterMovement()->IsFalling() && GetCharacterMovement()->Velocity.Z <= 100.0f)
+	{
+		FVector FoundLedge, FoundWallNormal;
+		if (DetectLedge(FoundLedge, FoundWallNormal))
+		{
+			StartLedgeGrab(FoundLedge, FoundWallNormal);
+			return;
+		}
+	}
+
 	//Movement Wall Logic
 	if (bIsWallSliding)
 	{
@@ -209,6 +225,15 @@ void ABunny_Third_PersonCharacter::Move(const FInputActionValue& Value)
 
 	if (bIsDashing) return;
 	
+	if (bIsLedgeHanging)
+	{
+		if (CurrentMoveInput.Y < -0.5f)
+		{
+			DropFromLedge();
+		}
+		return;
+	}
+
 	DoMove(CurrentMoveInput.X, CurrentMoveInput.Y);
 }
 
@@ -258,6 +283,22 @@ void ABunny_Third_PersonCharacter::DoLook(float Yaw, float Pitch)
 
 void ABunny_Third_PersonCharacter::DoJumpStart()
 {
+	// If Holding on ladge
+	if (bIsLedgeHanging)
+	{
+		// if moved back, drop down
+		if (CurrentMoveInput.Y < -0.2f)
+		{
+			DropFromLedge();
+		}
+		else
+		{
+			ClimbUpLedge();
+		}
+		return;
+	}
+	
+	
 	// No Object movement on a wall 
 	if (bJustWallJumped || bIsWallSliding)
 	{
@@ -371,6 +412,11 @@ void ABunny_Third_PersonCharacter::StartDash()
 {
 	if (bIsDashing || bDashOnCoolDown) return;
 
+	if (bIsLedgeHanging)
+	{
+		DropFromLedge();
+	}
+
 	StopWallSlide();
 
 	const bool bIsGrounded = GetCharacterMovement()->IsMovingOnGround();
@@ -475,6 +521,14 @@ void ABunny_Third_PersonCharacter::ResetDashCooldown()
 void ABunny_Third_PersonCharacter::Landed(const FHitResult& Hit)
 {
 	Super::Landed(Hit);
+
+	bCanLedgeGrab = true;
+	GetWorldTimerManager().ClearTimer(LedgeCooldownTimerHandle);
+
+	if (bIsLedgeHanging)
+	{
+		DropFromLedge();
+	}
 
 	StopWallSlide();
 	bCanAirDash = true;
@@ -618,7 +672,7 @@ void ABunny_Third_PersonCharacter::StopSprint()
 }
 
 // Nathan - Attack Function
-void ABunny_Third_PersonCharacter::DoAttack() 
+void ABunny_Third_PersonCharacter::DoAttack()
 {
 
 	if (CombatComp) {
@@ -626,3 +680,129 @@ void ABunny_Third_PersonCharacter::DoAttack()
 		CombatComp->Attack();
 	}
 }
+
+// Trace to find the ledge
+bool ABunny_Third_PersonCharacter::DetectLedge(FVector& OutLedgeLoc, FVector& OutWallNormal)
+{
+	FCollisionQueryParams TraceParams(FName(TEXT("LedgeTrace")), true, this );
+	TraceParams.AddIgnoredActor(this);
+	if (HeldGrabObject)
+	{
+		TraceParams.AddIgnoredActor(HeldGrabObject);
+	}
+
+	const FVector ActorLoc = GetActorLocation();
+	const FVector Forward = GetActorForwardVector();
+
+	// Place it in head / eye lvl
+	FVector ForwardStart = ActorLoc + FVector(0.0f, 0.0f, 30.0f);
+	FVector ForwardEnd = ForwardStart + (Forward * LedgeGrabForwardReach);
+
+	FHitResult WallHit; 
+	bool bHitWall = GetWorld()->LineTraceSingleByChannel(
+		WallHit, ForwardStart, ForwardEnd, ECC_WorldStatic, TraceParams);
+
+	if (!bHitWall || FMath::Abs(WallHit.Normal.Z) > 0.15f)
+	{
+		return false;
+	}
+
+	// to find the top surface of the wall
+	const float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	FVector DownStart = WallHit.ImpactPoint - (WallHit.Normal * 15.0f);
+	DownStart.Z = ActorLoc.Z + CapsuleHalfHeight + LedgeGrabTraceHeight;
+	FVector DownEnd = FVector(DownStart.X, DownStart.Y, ActorLoc.Z);
+
+	FHitResult LedgeHit;
+	bool bHitLedge = GetWorld()->LineTraceSingleByChannel(
+		LedgeHit, DownStart, DownEnd, ECC_WorldStatic, TraceParams);
+
+	if (!bHitLedge || LedgeHit.bStartPenetrating)
+	{
+		return false;
+	}
+
+	// flat scale
+	if (LedgeHit.Normal.Z < 0.7f)
+	{
+		return false;
+	}
+
+	OutLedgeLoc = LedgeHit.ImpactPoint;
+	OutWallNormal = WallHit.Normal;
+	return true;
+}
+
+void ABunny_Third_PersonCharacter::StartLedgeGrab(const FVector& InLedgeLoc, const FVector& InWallNormal)
+{
+	bIsLedgeHanging = true;
+	LedgeLocation = InLedgeLoc;
+	LedgeWallNormal = InWallNormal;
+
+	StopWallSlide();
+
+	// Freeze Player
+	GetCharacterMovement()->SetMovementMode(MOVE_Flying);
+	GetCharacterMovement()->Velocity = FVector::ZeroVector;
+	GetCharacterMovement()->GravityScale = 0.0f;
+
+	// Positon character up
+	const float CapsuleRadius = GetCapsuleComponent()->GetScaledCapsuleRadius();
+	FVector SnapLocation = LedgeLocation + (LedgeWallNormal * (CapsuleRadius + 10.0f));
+	SnapLocation.Z = LedgeLocation.Z - LedgeHangVerticalOffset;
+
+	SetActorLocation(SnapLocation);
+
+	FRotator FaceWall = (-LedgeWallNormal).Rotation();
+	FaceWall.Pitch = 0.0f;
+	FaceWall.Roll = 0.0f;
+	SetActorRotation(FaceWall);
+
+}
+
+void ABunny_Third_PersonCharacter::DropFromLedge()
+{
+	if (!bIsLedgeHanging) return;
+
+	bIsLedgeHanging = false;
+	bCanLedgeGrab = false;
+
+	GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+	GetCharacterMovement()->GravityScale = DefaultGravityScale;
+
+	const FVector PushAwayForce = (LedgeWallNormal * 150.0f) + FVector(0.0f, 0.0f, -100.0f);
+	GetCharacterMovement()->Velocity = PushAwayForce;
+
+	GetWorldTimerManager().SetTimer(
+		LedgeCooldownTimerHandle, this,
+		&ABunny_Third_PersonCharacter::ResetLedgeGrabCooldown,
+		LedgeGrabCooldown, false);
+}
+
+void ABunny_Third_PersonCharacter::ClimbUpLedge()
+{
+	if (!bIsLedgeHanging) return;
+
+	bIsLedgeHanging = false;
+	bCanLedgeGrab = true;
+	GetWorldTimerManager().ClearTimer(LedgeCooldownTimerHandle);
+
+	//Target top of the ledge 
+	const float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	FVector TargetLocation = LedgeLocation - (LedgeWallNormal * 30.0f);
+	TargetLocation.Z += CapsuleHalfHeight + 5.0f;
+
+	SetActorLocation(TargetLocation, false, nullptr, ETeleportType::TeleportPhysics);
+
+	GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+	GetCharacterMovement()->GravityScale = DefaultGravityScale;
+	GetCharacterMovement()->Velocity = FVector::ZeroVector;
+}
+
+void ABunny_Third_PersonCharacter::ResetLedgeGrabCooldown()
+{
+	bCanLedgeGrab = true;
+}
+
+
+
