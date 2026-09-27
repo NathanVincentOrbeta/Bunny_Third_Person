@@ -18,8 +18,9 @@ public class Bunny_Third_Person : ModuleRules
 			"StateTreeModule",
 			"GameplayStateTreeModule",
 			"UMG",
-			"Slate"
-		});
+			"Slate",
+            "NavigationSystem"
+        });
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
 

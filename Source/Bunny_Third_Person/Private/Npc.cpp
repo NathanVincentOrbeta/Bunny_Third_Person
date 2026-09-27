@@ -3,6 +3,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "CombatComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "AIC_NpcEnemy.h"
 
 // Sets default values
 ANpc::ANpc()
@@ -12,6 +13,8 @@ ANpc::ANpc()
 
 	GetCharacterMovement()->MaxWalkSpeed = 300.0f;
 	GetCharacterMovement()->BrakingDecelerationWalking = 1000.0f;
+
+	AIControllerClass = AAIC_NpcEnemy::StaticClass();
 }
 
 // Called when the game starts or when spawned
