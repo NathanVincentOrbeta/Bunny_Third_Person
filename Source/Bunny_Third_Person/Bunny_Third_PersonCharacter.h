@@ -196,6 +196,18 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ledge Grab")
 	float LedgeGrabCooldown = 0.4f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ledge Grab")
+	float LedgeShimmySpeed = 200.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ledge Grab")
+	float LedgeEdgeChackOffset = 25.0f;
+
+	UPROPERTY()
+	TWeakObjectPtr<UPrimitiveComponent> MovingBaseComponent; 
+
+	bool CanShimmy(float DirectionSign, FVector& OutLedgeLoc, FVector& OutWallNormal);
+
+	FTransform PreviousBaseTransform; 
 	FTimerHandle LedgeCooldownTimerHandle;
 
 	FVector LedgeLocation;
@@ -237,7 +249,7 @@ public:
 	/** Handles Wall logics */
 	UFUNCTION(BlueprintCallable, Category = "Input")
 	virtual void DoWallJumpLedge();
-	void StartWallSlide(const FVector& HitNormal);
+	void StartWallSlide(const FVector& HitNormal, UPrimitiveComponent* HitComponent = nullptr);
 	void StopWallSlide();
 	void StartWallStick();
 	void OnWallStickEnd();
@@ -254,10 +266,12 @@ public:
 	void ClearNearbyGrabObject(ABP_ObjectGrab* Object) { if (NearbyGrabObject == Object) NearbyGrabObject = nullptr; }
 
 	/** Ledge Function */
-	void StartLedgeGrab(const FVector& InLedgeLoc, const FVector& InWallNormal);
+	void StartLedgeGrab(const FVector& InLedgeLoc, const FVector& InWallNormal, UPrimitiveComponent* HitComponent = nullptr);
 	void DropFromLedge();
 	void ClimbUpLedge();
 	void ResetLedgeGrabCooldown();
+	void TickLedgeShimmy(float DeltaTime);
+	void UpdateMovingBaseMovement();
 
 	UFUNCTION(BlueprintPure, Category = "Ledge Grab")
 	bool IsLedgeHanging() const { return bIsLedgeHanging; }

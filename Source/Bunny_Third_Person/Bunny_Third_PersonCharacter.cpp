@@ -14,9 +14,7 @@
 #include "Kismet/KismetMathLibrary.h"
 #include <BP_ObjectGrab.h>
 #include "CombatComponent.h"
-
-
-DEFINE_LOG_CATEGORY(LogTemplateCharacter);
+#include "Audio/AudioTraceUtil.h"
 
 ABunny_Third_PersonCharacter::ABunny_Third_PersonCharacter()
 {
@@ -92,6 +90,16 @@ void ABunny_Third_PersonCharacter::Tick(float DeltaTime)
 
 	bJustWallJumped = false;
 
+	// Moving wall logic
+	if (bIsLedgeHanging || bIsWallSliding || bIsWallStick)
+	{
+		UpdateMovingBaseMovement();
+	}
+	else
+	{
+		MovingBaseComponent = nullptr;
+	}
+
 	// Dash Logic
 	if (bIsDashing)
 	{
@@ -102,6 +110,7 @@ void ABunny_Third_PersonCharacter::Tick(float DeltaTime)
 	if (bIsLedgeHanging)
 	{
 		GetCharacterMovement()->Velocity = FVector::ZeroVector;
+		TickLedgeShimmy(DeltaTime);
 		return;
 	}
 
@@ -174,7 +183,7 @@ void ABunny_Third_PersonCharacter::Tick(float DeltaTime)
 			{
 				if (FMath::Abs(HitResult.Normal.Z) < 0.35f)
 				{
-					StartWallSlide(HitResult.Normal);
+					StartWallSlide(HitResult.Normal, HitResult.GetComponent());
 				}
 			}
 		}
@@ -554,13 +563,23 @@ void ABunny_Third_PersonCharacter::DoWallJumpLedge()
 	}
 }
 
-void ABunny_Third_PersonCharacter::StartWallSlide(const FVector& HitNormal)
+void ABunny_Third_PersonCharacter::StartWallSlide(const FVector& HitNormal, UPrimitiveComponent* HitComponent)
 {
 	bIsWallSliding = true;
 	bCanWallJump = true;
 	bIsWallStick = false;
 	bHasWallStick = false;
 	WallNormal = HitNormal;
+
+	if (HitComponent && HitComponent->Mobility == EComponentMobility::Movable)
+	{
+		MovingBaseComponent = HitComponent;
+		PreviousBaseTransform = HitComponent->GetComponentTransform();
+	}
+	else
+	{
+		MovingBaseComponent = nullptr;
+	}
 
 	FRotator FaceWallRotation = (-WallNormal).Rotation();
 	FaceWallRotation.Pitch = 0.0f;
@@ -733,11 +752,22 @@ bool ABunny_Third_PersonCharacter::DetectLedge(FVector& OutLedgeLoc, FVector& Ou
 	return true;
 }
 
-void ABunny_Third_PersonCharacter::StartLedgeGrab(const FVector& InLedgeLoc, const FVector& InWallNormal)
+void ABunny_Third_PersonCharacter::StartLedgeGrab(const FVector& InLedgeLoc, const FVector& InWallNormal,
+	UPrimitiveComponent* HitComponent)
 {
 	bIsLedgeHanging = true;
 	LedgeLocation = InLedgeLoc;
 	LedgeWallNormal = InWallNormal;
+
+	if (HitComponent && HitComponent->Mobility == EComponentMobility::Movable)
+	{
+		MovingBaseComponent = HitComponent;
+		PreviousBaseTransform = HitComponent->GetComponentTransform();
+	}
+	else
+	{
+		MovingBaseComponent = nullptr;
+	}
 
 	StopWallSlide();
 
@@ -757,7 +787,6 @@ void ABunny_Third_PersonCharacter::StartLedgeGrab(const FVector& InLedgeLoc, con
 	FaceWall.Pitch = 0.0f;
 	FaceWall.Roll = 0.0f;
 	SetActorRotation(FaceWall);
-
 }
 
 void ABunny_Third_PersonCharacter::DropFromLedge()
@@ -789,8 +818,10 @@ void ABunny_Third_PersonCharacter::ClimbUpLedge()
 
 	//Target top of the ledge 
 	const float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	FVector TargetLocation = LedgeLocation - (LedgeWallNormal * 30.0f);
-	TargetLocation.Z += CapsuleHalfHeight + 5.0f;
+	const float CapsuleRadius = GetCapsuleComponent()->GetScaledCapsuleRadius();
+	
+	FVector TargetLocation = GetActorLocation() - (LedgeWallNormal * (CapsuleRadius + 20.0f));
+	TargetLocation.Z = LedgeLocation.Z + CapsuleHalfHeight + 5.0f;
 
 	SetActorLocation(TargetLocation, false, nullptr, ETeleportType::TeleportPhysics);
 
@@ -804,5 +835,159 @@ void ABunny_Third_PersonCharacter::ResetLedgeGrabCooldown()
 	bCanLedgeGrab = true;
 }
 
+bool ABunny_Third_PersonCharacter::CanShimmy(float DirectionSign, FVector& OutLedgeLoc, FVector& OutWallNormal)
+{
+	// Find the vector pointing to the player along the wall 
+	const FVector WallRight = FVector::CrossProduct(LedgeWallNormal, FVector::UpVector).GetSafeNormal();
+	const float CapsuleRadius = GetCapsuleComponent()->GetScaledCapsuleRadius();
 
+	const float CheckDistance = 20.0f;
+	const FVector SideOffset = WallRight * DirectionSign * CheckDistance;
+	const FVector TestOrigin = GetActorLocation() + SideOffset;
 
+	FCollisionQueryParams TraceParams(FName(TEXT("LedgeMoveTrace")), true, this);
+	TraceParams.AddIgnoredActor(this);
+	if (HeldGrabObject)
+	{
+		TraceParams.AddIgnoredActor(HeldGrabObject);
+	}
+
+	//find the wall
+	const FVector ForwardStart = TestOrigin + FVector(0.0f, 0.0f, 30.0f);
+	const FVector ForwardEnd = ForwardStart + (-LedgeWallNormal * (CapsuleRadius + 40.0f));
+
+	FHitResult WallHit;
+	bool bHitWall = GetWorld()->LineTraceSingleByChannel(WallHit, ForwardStart, ForwardEnd, ECC_WorldStatic, TraceParams);
+
+	if (!bHitWall || FMath::Abs(WallHit.Normal.Z) > 0.15f)
+	{
+		return false;
+	}
+
+	// Trace downward so it can comfirm top ledge
+	const float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	FVector DownStart = WallHit.ImpactPoint - (WallHit.Normal * 15.0f);
+	DownStart.Z = GetActorLocation().Z + CapsuleHalfHeight + LedgeGrabTraceHeight;
+	FVector DownEnd = FVector(DownStart.X, DownStart.Y, GetActorLocation().Z);
+
+	FHitResult LedgeHit;
+	bool bHitLedge = GetWorld()->LineTraceSingleByChannel(LedgeHit, DownStart, DownEnd, ECC_WorldStatic, TraceParams);
+
+	if (!bHitLedge || LedgeHit.bStartPenetrating || LedgeHit.Normal.Z < 0.7f)
+	{
+		return false;
+	}
+
+	OutLedgeLoc = FVector(WallHit.ImpactPoint.X, WallHit.ImpactPoint.Y, LedgeHit.ImpactPoint.Z);
+	OutWallNormal = WallHit.Normal;
+	return true;
+}
+
+void ABunny_Third_PersonCharacter::TickLedgeShimmy(float DeltaTime)
+{
+	if (FMath::Abs(CurrentMoveInput.X) < 0.15f)
+	{
+		return;
+	}
+
+	const float DirectionSign = FMath::Sign(CurrentMoveInput.X);
+
+	// find if you at ledge
+	FVector AheadLedgeLoc, NewWallNormal;
+	if (!CanShimmy(DirectionSign, AheadLedgeLoc, NewWallNormal))
+	{
+		return;
+	}
+
+	const FVector WallRight = FVector::CrossProduct(LedgeWallNormal,FVector::UpVector).GetSafeNormal();
+	const float MoveAmount = CurrentMoveInput.X * LedgeShimmySpeed * DeltaTime;
+	const FVector DesiredMovement = WallRight * MoveAmount;
+
+	AddActorWorldOffset(DesiredMovement, false);
+
+	const float CapsuleRadius = GetCapsuleComponent()->GetScaledCapsuleRadius();
+	const float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+
+	FCollisionQueryParams TraceParams(FName(TEXT("LedgeSnapTrace")), true, this);
+	TraceParams.AddIgnoredActor(this);
+	if (HeldGrabObject)
+	{
+		TraceParams.AddIgnoredActor(HeldGrabObject);
+	}
+
+	const FVector ActorLoc = GetActorLocation();
+	const FVector ForwardStart = ActorLoc + FVector(0.0f, 0.0f, 30.0f);
+	const FVector ForwardEnd = ForwardStart + (-LedgeWallNormal * (CapsuleRadius + 40.0f));
+
+	FHitResult WallHit;
+	if (GetWorld()->LineTraceSingleByChannel(WallHit, ForwardStart, ForwardEnd, ECC_WorldStatic, TraceParams))
+	{
+		if (FMath::Abs(WallHit.Normal.Z) <= 0.15f)
+		{
+			LedgeWallNormal = WallHit.Normal;
+
+			FVector DownStart = WallHit.ImpactPoint - (WallHit.Normal * 15.0f);
+			DownStart.Z = ActorLoc.Z + CapsuleHalfHeight + LedgeGrabTraceHeight;
+			FVector DownEnd = FVector(DownStart.X, DownStart.Y, ActorLoc.Z - 30.0f);
+
+			FHitResult LedgeHit;
+			if (GetWorld()->LineTraceSingleByChannel(LedgeHit, DownStart, DownEnd, ECC_WorldStatic, TraceParams))
+			{
+				if (!LedgeHit.bStartPenetrating && LedgeHit.Normal.Z >= 0.7f)
+				{
+					LedgeLocation = FVector(WallHit.ImpactPoint.X, WallHit.ImpactPoint.Y, LedgeHit.ImpactPoint.Z);
+				}
+			}
+
+			FVector SnappedLocation = WallHit.ImpactPoint + (LedgeWallNormal * (CapsuleRadius + 5.0f));
+			SnappedLocation.Z = LedgeLocation.Z - LedgeHangVerticalOffset;
+			SetActorLocation(SnappedLocation, false);
+
+			FRotator FaceWall = (-LedgeWallNormal).Rotation();
+			FaceWall.Pitch = 0.0f;
+			FaceWall.Roll = 0.0f;
+			SetActorRotation(FaceWall);
+			return;
+		}
+	}
+	FVector TargetPos = GetActorLocation();
+	TargetPos.Z = LedgeLocation.Z - LedgeHangVerticalOffset;
+	SetActorLocation(TargetPos, false);
+
+	FRotator FaceWall = (-LedgeWallNormal).Rotation();
+	FaceWall.Pitch = 0.0f;
+	FaceWall.Roll = 0.0f;
+	SetActorRotation(FaceWall);
+}
+
+void ABunny_Third_PersonCharacter::UpdateMovingBaseMovement()
+{
+	if (!MovingBaseComponent.IsValid())
+	{
+		return;
+	}
+
+	const FTransform CurrentBaseTransform = MovingBaseComponent->GetComponentTransform();
+
+	const FQuat DeltaRotation = CurrentBaseTransform.GetRotation() * PreviousBaseTransform.GetRotation().Inverse();
+	const FTransform LocalTransform = GetActorTransform().GetRelativeTransform(PreviousBaseTransform);
+	const FTransform NewWorldTransform = LocalTransform * CurrentBaseTransform;
+
+	SetActorLocationAndRotation(
+		NewWorldTransform.GetLocation(),
+		NewWorldTransform.GetRotation(),
+		false,
+		nullptr,
+		ETeleportType::TeleportPhysics);
+
+	LedgeWallNormal = DeltaRotation.RotateVector(LedgeWallNormal);
+	WallNormal = DeltaRotation.RotateVector(WallNormal);
+
+	if (Controller)
+	{
+		AddControllerYawInput(DeltaRotation.Rotator().Yaw);
+	}
+	LedgeLocation = CurrentBaseTransform.TransformPosition(PreviousBaseTransform.InverseTransformPosition(LedgeLocation));
+
+	PreviousBaseTransform = CurrentBaseTransform;
+}
