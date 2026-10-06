@@ -66,6 +66,10 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* AttackAction;
 
+	/** Crouch Input Action */
+	UPROPERTY(EditAnywhere, Category = "Input")
+	UInputAction* CrouchAction;
+
 public:
 
 	/** Constructor */
@@ -213,7 +217,7 @@ protected:
 	FVector LedgeLocation;
 	FVector LedgeWallNormal; 
 
-	bool DetectLedge(FVector& OutLedgeLoc, FVector& OutWallNormal);
+	bool DetectLedge(FVector& OutLedgeLoc, FVector& OutWallNormal, UPrimitiveComponent*& OutHitComponent);
 
 public:
 
@@ -236,6 +240,9 @@ public:
 	/** Grab input */
 	UFUNCTION(BlueprintCallable, Category = "Input")
 	virtual void DoGrab();
+
+	UFUNCTION(BlueprintCallable, Category = "Input")
+	virtual void DoCrouch();
 
 	/** Handles Dash Input */
 	UFUNCTION(BlueprintCallable, Category = "Input")

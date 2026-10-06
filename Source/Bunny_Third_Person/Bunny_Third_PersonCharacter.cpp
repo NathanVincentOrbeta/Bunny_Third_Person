@@ -117,9 +117,10 @@ void ABunny_Third_PersonCharacter::Tick(float DeltaTime)
 	if (bCanLedgeGrab && GetCharacterMovement()->IsFalling() && GetCharacterMovement()->Velocity.Z <= 100.0f)
 	{
 		FVector FoundLedge, FoundWallNormal;
-		if (DetectLedge(FoundLedge, FoundWallNormal))
+		UPrimitiveComponent* FoundComponent = nullptr;
+		if (DetectLedge(FoundLedge, FoundWallNormal, FoundComponent))
 		{
-			StartLedgeGrab(FoundLedge, FoundWallNormal);
+			StartLedgeGrab(FoundLedge, FoundWallNormal, FoundComponent);
 			return;
 		}
 	}
@@ -220,6 +221,9 @@ void ABunny_Third_PersonCharacter::SetupPlayerInputComponent(UInputComponent* Pl
 
 		// Attacking
 		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoAttack);
+
+		// Crouch
+		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoCrouch);
 	}
 	else
 	{
@@ -415,6 +419,10 @@ void ABunny_Third_PersonCharacter::DoGrab()
 
 		HeldGrabObject->GrabObject(GetMesh(), FName("right_hand"));
 	}
+}
+
+void ABunny_Third_PersonCharacter::DoCrouch()
+{
 }
 
 void ABunny_Third_PersonCharacter::StartDash()
@@ -701,8 +709,10 @@ void ABunny_Third_PersonCharacter::DoAttack()
 }
 
 // Trace to find the ledge
-bool ABunny_Third_PersonCharacter::DetectLedge(FVector& OutLedgeLoc, FVector& OutWallNormal)
+bool ABunny_Third_PersonCharacter::DetectLedge(FVector& OutLedgeLoc, FVector& OutWallNormal, UPrimitiveComponent*& OutHitComponent)
 {
+	OutHitComponent = nullptr;
+	
 	FCollisionQueryParams TraceParams(FName(TEXT("LedgeTrace")), true, this );
 	TraceParams.AddIgnoredActor(this);
 	if (HeldGrabObject)
@@ -749,6 +759,8 @@ bool ABunny_Third_PersonCharacter::DetectLedge(FVector& OutLedgeLoc, FVector& Ou
 
 	OutLedgeLoc = LedgeHit.ImpactPoint;
 	OutWallNormal = WallHit.Normal;
+
+	OutHitComponent = WallHit.GetComponent() ? WallHit.GetComponent() : LedgeHit.GetComponent();
 	return true;
 }
 
@@ -983,10 +995,6 @@ void ABunny_Third_PersonCharacter::UpdateMovingBaseMovement()
 	LedgeWallNormal = DeltaRotation.RotateVector(LedgeWallNormal);
 	WallNormal = DeltaRotation.RotateVector(WallNormal);
 
-	if (Controller)
-	{
-		AddControllerYawInput(DeltaRotation.Rotator().Yaw);
-	}
 	LedgeLocation = CurrentBaseTransform.TransformPosition(PreviousBaseTransform.InverseTransformPosition(LedgeLocation));
 
 	PreviousBaseTransform = CurrentBaseTransform;
