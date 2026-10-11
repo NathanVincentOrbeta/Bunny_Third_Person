@@ -48,29 +48,24 @@ void AAIC_NpcEnemy::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors) {
 	for (AActor* Actor : UpdatedActors) {
 		if (Actor && Actor->IsA(ABunny_Third_PersonCharacter::StaticClass())) {
 
-			// 1. Create the array to hold the results
+			// Array to hold perceived actors.
 			TArray<AActor*> CurrentlyPerceivedActors;
-
-			// 2. CALL THE FUNCTION WITH BOTH ARGUMENTS
-			// Argument 1: UAISense_Sight::StaticClass() -> Tells it to only look for things seen
-			// Argument 2: CurrentlyPerceivedActors -> The array to fill with results
 			PerceptionComp->GetCurrentlyPerceivedActors(UAISense_Sight::StaticClass(), CurrentlyPerceivedActors);
 
-			// 3. Check if the actor that triggered the update is still in the "seen" list
 			if (CurrentlyPerceivedActors.Contains(Actor)) {
 
-				// PLAYER IS CURRENTLY SEEN
+				// If player is seen
 				if (Blackboard) {
 					Blackboard->SetValueAsObject(TEXT("TargetActor"), Actor);
-					UE_LOG(LogTemp, Warning, TEXT("AI: Player spotted via Sight!"));
+					UE_LOG(LogTemp, Warning, TEXT("AI: Player spotted! Violating player..."));
 				}
 			}
 			else {
 
-				// PLAYER IS NO LONGER SEEN
+				// If player is not seen
 				if (Blackboard) {
 					Blackboard->ClearValue(TEXT("TargetActor"));
-					UE_LOG(LogTemp, Warning, TEXT("AI: Lost sight of player! Returning to patrol."));
+					UE_LOG(LogTemp, Warning, TEXT("AI: Lost sight of player! Returning to gooning..."));
 				}
 			}
 		}
