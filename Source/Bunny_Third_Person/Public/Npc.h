@@ -25,10 +25,10 @@ protected:
 	float MaxHealth = 100.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NPC")
-	float PatrolSpeed = 300.0f;
+	float PatrolSpeed = 200.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NPC")
-	float ChaseSpeed = 600.0f;
+	float ChaseSpeed = 450.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NPC")
 	UAnimMontage* DeathMontage;

@@ -1,27 +1,37 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "RangedCombatComponent.h"
+#include "GameFramework/Character.h"
+#include "Engine/DamageEvents.h"
 
-// Sets default values
-ARangedCombatComponent::ARangedCombatComponent()
+void URangedCombatComponent::PerformAttackTrace()
 {
- 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
+	AActor* Owner = GetOwner();
+	if (!Owner) return;
 
+	FVector Start = Owner->GetActorLocation();
+	FVector Forward = Owner->GetActorForwardVector();
+	FVector End = Start + (Forward * MaxRangedDistance);
+
+	FHitResult HitResult;
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(Owner);
+
+	// Use a LineTrace for ranged attacks
+	bool bHit = GetWorld()->LineTraceSingleByChannel(
+		HitResult,
+		Start,
+		End,
+		ECC_Pawn,
+		Params
+	);
+
+	if (bHit && HitResult.GetActor())
+	{
+		AActor* HitActor = HitResult.GetActor();
+		UE_LOG(LogTemp, Log, TEXT("Ranged Attack Hit: %s"), *HitActor->GetName());
+
+		APawn* InstigatorPawn = Owner->GetInstigator();
+		AController* Controller = InstigatorPawn ? InstigatorPawn->GetController() : nullptr;
+
+		HitActor->TakeDamage(RangedDamage, FDamageEvent(), Controller, Owner);
+	}
 }
-
-// Called when the game starts or when spawned
-void ARangedCombatComponent::BeginPlay()
-{
-	Super::BeginPlay();
-	
-}
-
-// Called every frame
-void ARangedCombatComponent::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-
-}
-
