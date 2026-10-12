@@ -11,7 +11,7 @@ ANpc::ANpc()
 	// Initialize Combat Component
 	NPCCombatComp = CreateDefaultSubobject<UCombatComponent>(TEXT("NPCCombatComp"));
 
-	GetCharacterMovement()->MaxWalkSpeed = 300.0f;
+	GetCharacterMovement()->MaxWalkSpeed = PatrolSpeed;
 	GetCharacterMovement()->BrakingDecelerationWalking = 1000.0f;
 
 	AIControllerClass = AAIC_NpcEnemy::StaticClass();
@@ -58,5 +58,14 @@ void ANpc::Die() {
 	PlayAnimMontage(DeathMontage);
 
 	SetLifeSpan(0.3f);
+}
+
+void ANpc::SetMovementSpeed(bool bIsChasing)
+{
+	float TargetSpeed = bIsChasing ? ChaseSpeed : PatrolSpeed;
+	GetCharacterMovement()->MaxWalkSpeed = TargetSpeed;
+
+	// Debug log to confirm speed change
+	UE_LOG(LogTemp, Log, TEXT("NPC Speed changed to: %f"), TargetSpeed);
 }
 

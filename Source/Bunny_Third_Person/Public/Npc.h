@@ -25,6 +25,12 @@ protected:
 	float MaxHealth = 100.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NPC")
+	float PatrolSpeed = 300.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NPC")
+	float ChaseSpeed = 600.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NPC")
 	UAnimMontage* DeathMontage;
 
 	//Take damage handler
@@ -43,6 +49,8 @@ public:
 	// Nathan - Attaching Combat Component here to use for attack mechanic
 	UPROPERTY(VisibleAnywhere)
 	class UCombatComponent* NPCCombatComp;
+
+	void SetMovementSpeed(bool bIsChasing);
 
 
 };

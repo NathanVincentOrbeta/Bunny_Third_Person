@@ -1,4 +1,5 @@
 #include "AIC_NpcEnemy.h"
+#include "Npc.h"
 #include "BehaviorTree/BehaviorTree.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Perception/AIPerceptionComponent.h"
@@ -14,7 +15,7 @@ AAIC_NpcEnemy::AAIC_NpcEnemy() {
 	// Configure Sight
 	SightConfig->SightRadius = 500.0f;
 	SightConfig->LoseSightRadius = 1000.0f;
-	SightConfig->PeripheralVisionAngleDegrees = 90.0f;
+	SightConfig->PeripheralVisionAngleDegrees = 135.0f;
 	SightConfig->DetectionByAffiliation.bDetectEnemies = true;
 	SightConfig->DetectionByAffiliation.bDetectFriendlies = true;
 	SightConfig->DetectionByAffiliation.bDetectNeutrals = true;
@@ -52,6 +53,8 @@ void AAIC_NpcEnemy::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors) {
 			TArray<AActor*> CurrentlyPerceivedActors;
 			PerceptionComp->GetCurrentlyPerceivedActors(UAISense_Sight::StaticClass(), CurrentlyPerceivedActors);
 
+			ANpc* MyNpc = Cast<ANpc>(GetPawn());
+
 			if (CurrentlyPerceivedActors.Contains(Actor)) {
 
 				// If player is seen
@@ -59,6 +62,8 @@ void AAIC_NpcEnemy::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors) {
 					Blackboard->SetValueAsObject(TEXT("TargetActor"), Actor);
 					UE_LOG(LogTemp, Warning, TEXT("AI: Player spotted! Violating player..."));
 				}
+
+				if (MyNpc) { MyNpc->SetMovementSpeed(true); }
 			}
 			else {
 
@@ -67,6 +72,8 @@ void AAIC_NpcEnemy::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors) {
 					Blackboard->ClearValue(TEXT("TargetActor"));
 					UE_LOG(LogTemp, Warning, TEXT("AI: Lost sight of player! Returning to gooning..."));
 				}
+
+				if (MyNpc) { MyNpc->SetMovementSpeed(false); }
 			}
 		}
 	}
