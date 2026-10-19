@@ -45,7 +45,7 @@
 SourceArt/**/*.png
 SourceArt/**/*.tga
 
-# Imported Asset folders
+# Imported Asset folders - Nathan
 Content/VRS_LowPolyNature/*
 Content/StylizedBridge/*
 
