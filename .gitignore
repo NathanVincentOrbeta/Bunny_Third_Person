@@ -45,6 +45,10 @@
 SourceArt/**/*.png
 SourceArt/**/*.tga
 
+# Imported Asset folders
+Content/VRS_LowPolyNature/*
+Content/StylizedBridge/*
+
 # Binary Files
 Binaries/*
 Plugins/**/Binaries/*
