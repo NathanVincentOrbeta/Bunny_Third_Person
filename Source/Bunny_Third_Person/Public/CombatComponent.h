@@ -32,7 +32,7 @@ protected:
 	bool bIsAttacking = false;
 	FTimerHandle CooldownTimerHandle;
 
-	void PerformAttackTrace();
+	virtual void PerformAttackTrace();
 
 	void ResetAttack();
 
