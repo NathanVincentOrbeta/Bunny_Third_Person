@@ -15,7 +15,7 @@ AAIC_NpcEnemy::AAIC_NpcEnemy() {
 	// Configure Sight
 	SightConfig->SightRadius = 500.0f;
 	SightConfig->LoseSightRadius = 1000.0f;
-	SightConfig->PeripheralVisionAngleDegrees = 135.0f;
+	SightConfig->PeripheralVisionAngleDegrees = 90.0f;
 	SightConfig->DetectionByAffiliation.bDetectEnemies = true;
 	SightConfig->DetectionByAffiliation.bDetectFriendlies = true;
 	SightConfig->DetectionByAffiliation.bDetectNeutrals = true;

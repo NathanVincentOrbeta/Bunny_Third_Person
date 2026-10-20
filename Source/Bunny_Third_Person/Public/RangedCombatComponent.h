@@ -20,4 +20,10 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ranged Combat")
 	float MaxRangedDistance = 2000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ranged Combat | Debug")
+	bool bShowDebugTrace = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Ranged Combat | Debug")
+	float DebugTraceDuration = 1.5f;
 };
