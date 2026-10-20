@@ -2,21 +2,50 @@
 #include "GameFramework/Character.h"
 #include "Engine/DamageEvents.h"
 #include "DrawDebugHelpers.h"
+#include "AIController.h"
+#include "BehaviorTree/BlackboardComponent.h"
 
 void URangedCombatComponent::PerformAttackTrace()
 {
 	AActor* Owner = GetOwner();
 	if (!Owner) return;
 
+	// Start trace around chest height (+50 on Z)
 	FVector Start = Owner->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f);
-	FVector Forward = Owner->GetActorForwardVector();
-	FVector End = Start + (Forward * MaxRangedDistance);
+	FVector ShootDirection = Owner->GetActorForwardVector();
+
+	// If the owner is an AI, aim directly at the TargetActor
+	if (APawn* OwnerPawn = Cast<APawn>(Owner))
+	{
+		if (AAIController* AIController = Cast<AAIController>(OwnerPawn->GetController()))
+		{
+			if (UBlackboardComponent* BBComp = AIController->GetBlackboardComponent())
+			{
+				if (AActor* TargetActor = Cast<AActor>(BBComp->GetValueAsObject(TEXT("TargetActor"))))
+				{
+					// Aim straight at the player's center/chest
+					FVector TargetLocation = TargetActor->GetActorLocation();
+					ShootDirection = (TargetLocation - Start).GetSafeNormal();
+
+					// Also ensure the body faces the player horizontally
+					FVector FaceDirection = TargetLocation - Owner->GetActorLocation();
+					FaceDirection.Z = 0.0f;
+					if (!FaceDirection.IsNearlyZero())
+					{
+						Owner->SetActorRotation(FaceDirection.Rotation());
+					}
+				}
+			}
+		}
+	}
+
+	FVector End = Start + (ShootDirection * MaxRangedDistance);
 
 	FHitResult HitResult;
 	FCollisionQueryParams Params;
 	Params.AddIgnoredActor(Owner);
 
-	// Use a LineTrace for ranged attacks
+	// Line trace for ranged attack
 	bool bHit = GetWorld()->LineTraceSingleByChannel(
 		HitResult,
 		Start,
@@ -24,34 +53,18 @@ void URangedCombatComponent::PerformAttackTrace()
 		ECC_Pawn,
 		Params
 	);
-	if (bShowDebugTrace) {
 
+	// Draw Debug Visuals
+	if (bShowDebugTrace)
+	{
 		FVector TraceEnd = bHit ? HitResult.ImpactPoint : End;
 		FColor LineColor = bHit ? FColor::Red : FColor::Green;
 
-		DrawDebugLine(
-			GetWorld(),
-			Start,
-			TraceEnd,
-			LineColor,
-			false,
-			DebugTraceDuration,
-			0,
-			3.0f
-		);
+		DrawDebugLine(GetWorld(), Start, TraceEnd, LineColor, false, DebugTraceDuration, 0, 3.0f);
 
-		if (bHit) {
-
-			DrawDebugSphere(
-				GetWorld(),
-				HitResult.ImpactPoint,
-				16.0f,
-				12, FColor::Yellow,
-				false,
-				DebugTraceDuration,
-				0,
-				2.0f
-			);
+		if (bHit)
+		{
+			DrawDebugSphere(GetWorld(), HitResult.ImpactPoint, 16.0f, 12, FColor::Yellow, false, DebugTraceDuration, 0, 2.0f);
 		}
 	}
 
