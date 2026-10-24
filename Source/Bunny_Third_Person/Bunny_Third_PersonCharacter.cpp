@@ -1,7 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Bunny_Third_PersonCharacter.h"
-#include "Engine/LocalPlayer.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -11,72 +10,49 @@
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
 #include "Bunny_Third_Person.h"
-#include "Kismet/KismetMathLibrary.h"
-#include <BP_ObjectGrab.h>
+#include "BP_ObjectGrab.h"
 #include "CombatComponent.h"
-#include "Audio/AudioTraceUtil.h"
 
 ABunny_Third_PersonCharacter::ABunny_Third_PersonCharacter()
 {
-	//Time
 	PrimaryActorTick.bCanEverTick = true;
 
-	// collision capsule Settigns
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 	GetCapsuleComponent()->SetGenerateOverlapEvents(true);
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Overlap);
-	
-		
-	// Don't rotate when the controller rotates. Let that just affect the camera.
+
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = false;
 	bUseControllerRotationRoll = false;
 
-	// Configure character movement
-	GetCharacterMovement()->bOrientRotationToMovement = true;
-	GetCharacterMovement()->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
-	GetCharacterMovement()->AirControl = 0.35f;
+	// Character Movement setup
+	UCharacterMovementComponent* MoveComp = GetCharacterMovement();
+	MoveComp->bOrientRotationToMovement = true;
+	MoveComp->RotationRate = FRotator(0.0f, 720.0f, 0.0f);
+	MoveComp->AirControl = 0.35f;
+	MoveComp->GravityScale = DefaultGravityScale;
+	MoveComp->JumpZVelocity = 500.f;
+	MoveComp->MaxWalkSpeed = WalkSpeed;
+	MoveComp->MinAnalogWalkSpeed = 20.f;
+	MoveComp->BrakingDecelerationWalking = DefaultBrakingDecelWalking;
+	MoveComp->BrakingDecelerationFalling = 1500.0f;
 
-	// testing gravity
-	DefaultGravityScale = 1.75f;
-	GetCharacterMovement()->GravityScale = DefaultGravityScale;
+	MoveComp->GetNavAgentPropertiesRef().bCanCrouch = true;
+	MoveComp->CrouchedHalfHeight = 48.0f;
 
-	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
-	// instead of recompiling to adjust them
-	GetCharacterMovement()->JumpZVelocity = 500.f;
-	GetCharacterMovement()->AirControl = 0.35f;
-	GetCharacterMovement()->MaxWalkSpeed = 500.f;
-	GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
-	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
-	GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
-
-	// Enable Crouch
-	GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
-	GetCharacterMovement()->CrouchedHalfHeight = 48.0f;
-	DefaultBrakingDecelWalking = GetCharacterMovement()->BrakingDecelerationWalking;
-
-	// Create a camera boom (pulls in towards the player if there is a collision)
+	// Camera setup
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
 	CameraBoom->TargetArmLength = 400.0f;
 	CameraBoom->bUsePawnControlRotation = true;
 
-	// Create a follow camera
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
 
-	// Create a grabable values
 	HoldPoint = CreateDefaultSubobject<USceneComponent>(TEXT("HoldPoint"));
 	HoldPoint->SetupAttachment(RootComponent);
 
-	HeldGrabObject = nullptr;
-	NearbyGrabObject = nullptr;
-
-	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character) 
-	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
-
-	// Nathan - Creating Combat Component
 	CombatComp = CreateDefaultSubobject<UCombatComponent>(TEXT("CombatComponent"));
 }
 
@@ -86,7 +62,6 @@ void ABunny_Third_PersonCharacter::BeginPlay()
 
 	DefaultGravityScale = GetCharacterMovement()->GravityScale;
 	DefaultBrakingDecelWalking = GetCharacterMovement()->BrakingDecelerationWalking;
-	WalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
 	bCanAirDash = true;
 }
 
@@ -94,21 +69,17 @@ void ABunny_Third_PersonCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	bJustWallJumped = false;
-
-	// Ground Pound Logic
+	// 1. Ground Pound
 	if (bIsGroundPounding)
 	{
-		GetCharacterMovement()->Velocity.X = 0.0f;
-		GetCharacterMovement()->Velocity.Y = 0.0f;
-		GetCharacterMovement()->Velocity.Z = -GroundPoundSpeed;
+		GetCharacterMovement()->Velocity = FVector(0.0f, 0.0f, -GroundPoundSpeed);
 		return;
 	}
 
-	// Slope Slide Logic
+	// 2. Slope Slide
 	TickSlopeSlide(DeltaTime);
 
-	// Moving wall logic
+	// 3. Moving Base Update
 	if (bIsLedgeHanging || bIsWallSliding || bIsWallStick)
 	{
 		UpdateMovingBaseMovement();
@@ -118,13 +89,14 @@ void ABunny_Third_PersonCharacter::Tick(float DeltaTime)
 		MovingBaseComponent = nullptr;
 	}
 
-	// Dash Logic
+	// 4. Dash
 	if (bIsDashing)
 	{
 		GetCharacterMovement()->Velocity = DashDirection * DashSpeed;
 		return;
 	}
 
+	// 5. Ledge Hang & Shimmy
 	if (bIsLedgeHanging)
 	{
 		GetCharacterMovement()->Velocity = FVector::ZeroVector;
@@ -132,6 +104,7 @@ void ABunny_Third_PersonCharacter::Tick(float DeltaTime)
 		return;
 	}
 
+	// 6. Ledge Detection
 	if (bCanLedgeGrab && GetCharacterMovement()->IsFalling() && GetCharacterMovement()->Velocity.Z <= 100.0f)
 	{
 		FVector FoundLedge, FoundWallNormal;
@@ -143,13 +116,12 @@ void ABunny_Third_PersonCharacter::Tick(float DeltaTime)
 		}
 	}
 
-	//Movement Wall Logic
+	// 7. Wall Slide & Wall Detection
 	if (bIsWallSliding)
 	{
-		// Trace if contact is maintained 
 		FHitResult SlideHit;
-		FVector Start = GetActorLocation();
-		FVector End = Start - (WallNormal * 60.0f);
+		const FVector Start = GetActorLocation();
+		const FVector End = Start - (WallNormal * 60.0f);
 
 		FCollisionQueryParams TraceParams(FName(TEXT("WallSlideTrace")), true, this);
 		TraceParams.AddIgnoredActor(this);
@@ -159,103 +131,85 @@ void ABunny_Third_PersonCharacter::Tick(float DeltaTime)
 		if (bHitWall && FMath::Abs(SlideHit.Normal.Z) < 0.35f)
 		{
 			WallNormal = SlideHit.Normal;
-
 			const bool bPushIntoWall = IsPushingIntoWall();
 
 			if (bPushIntoWall && !bHasWallStick)
 			{
 				StartWallStick();
 			}
-			if (bIsWallStick && !bPushIntoWall)
+			else if (bIsWallStick && !bPushIntoWall)
 			{
 				OnWallStickEnd();
 			}
 
-			// Stick to the wall for sec
-			if (bIsWallStick)
-			{
-				GetCharacterMovement()->Velocity = FVector::ZeroVector;
-			}
-			else
-			{
-				GetCharacterMovement()->Velocity = FVector(0.0f, 0.0f, -WallSlideSpeed);
-			}
+			GetCharacterMovement()->Velocity = bIsWallStick ? FVector::ZeroVector : FVector(0.0f, 0.0f, -WallSlideSpeed);
 		}
 		else
 		{
 			StopWallSlide();
 		}
 	}
-	else if (GetCharacterMovement()->IsFalling())
+	else if (GetCharacterMovement()->IsFalling() && GetCharacterMovement()->Velocity.Z <= 50.0f)
 	{
-		// looking for wall when falling
-		if (GetCharacterMovement()-> Velocity.Z <= 50.0f)
+		FHitResult HitResult;
+		const FVector Start = GetCapsuleComponent()->GetComponentLocation();
+		const FVector End = Start + (GetActorForwardVector() * 55.0f);
+
+		FCollisionQueryParams TraceParams(FName(TEXT("WallJumpTrace")), true, this);
+		TraceParams.AddIgnoredActor(this);
+
+		if (GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_WorldStatic, TraceParams))
 		{
-			FHitResult HitResult;
-			FVector Start = GetCapsuleComponent()->GetComponentLocation();
-			FVector End = Start + (GetActorForwardVector() * 55.0f);
-
-			FCollisionQueryParams TraceParams(FName(TEXT("WallJumpTrace")), true, this);
-			TraceParams.AddIgnoredActor(this);
-
-			if (GetWorld()->LineTraceSingleByChannel(HitResult, Start, End, ECC_WorldStatic, TraceParams))
+			if (FMath::Abs(HitResult.Normal.Z) < 0.35f)
 			{
-				if (FMath::Abs(HitResult.Normal.Z) < 0.35f)
-				{
-					StartWallSlide(HitResult.Normal, HitResult.GetComponent());
-				}
+				StartWallSlide(HitResult.Normal, HitResult.GetComponent());
 			}
 		}
 	}
 }
 
+// -----------------------------------------------------------------------------
+// Input Setup
+// -----------------------------------------------------------------------------
 void ABunny_Third_PersonCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
-	// Set up action bindings
-	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
-		
-		// Jumping
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoWallJumpLedge);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoJumpStart);
-		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ABunny_Third_PersonCharacter::DoJumpEnd);
-		
-
-		// Moving
-		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ABunny_Third_PersonCharacter::Move);
-		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Completed, this, &ABunny_Third_PersonCharacter::MoveCompleted);
-		EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Canceled, this, &ABunny_Third_PersonCharacter::MoveCompleted);
-		EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &ABunny_Third_PersonCharacter::Look);
-
-		// Looking
-		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ABunny_Third_PersonCharacter::Look);
-
-		// Grab
-		EnhancedInputComponent->BindAction(GrabAction, ETriggerEvent::Started, this, & ABunny_Third_PersonCharacter::DoGrab);
-
-		// Dash
-		EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::OnDashButtonPressed);
-		EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Completed, this, &ABunny_Third_PersonCharacter::OnDashButtonReleased);
-		EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Canceled, this, &ABunny_Third_PersonCharacter::OnDashButtonReleased);
-
-		// Attacking
-		EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoAttack);
-
-		// Crouch
-		EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoCrouch);
-	}
-	else
+	UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent);
+	if (!EnhancedInputComponent)
 	{
-		UE_LOG(LogBunny_Third_Person, Error, TEXT("'%s' Failed to find an Enhanced Input component! This template is built to use the Enhanced Input system. If you intend to use the legacy system, then you will need to update this C++ file."), *GetNameSafe(this));
+		UE_LOG(LogBunny_Third_Person, Error, TEXT("'%s' Failed to find an Enhanced Input component!"), *GetNameSafe(this));
+		return;
 	}
+
+	// Single binding for jump press; resolved in DoJumpStart()
+	EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoJumpStart);
+	EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ABunny_Third_PersonCharacter::DoJumpEnd);
+
+	EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &ABunny_Third_PersonCharacter::Move);
+	EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Completed, this, &ABunny_Third_PersonCharacter::MoveCompleted);
+	EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Canceled, this, &ABunny_Third_PersonCharacter::MoveCompleted);
+
+	EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ABunny_Third_PersonCharacter::Look);
+	EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &ABunny_Third_PersonCharacter::Look);
+
+	EnhancedInputComponent->BindAction(GrabAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoGrab);
+
+	EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::OnDashButtonPressed);
+	EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Completed, this, &ABunny_Third_PersonCharacter::OnDashButtonReleased);
+	EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Canceled, this, &ABunny_Third_PersonCharacter::OnDashButtonReleased);
+
+	EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoAttack);
+	EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoCrouch);
 }
 
+// -----------------------------------------------------------------------------
+// Movement & Looking Callbacks
+// -----------------------------------------------------------------------------
 void ABunny_Third_PersonCharacter::Move(const FInputActionValue& Value)
 {
-	// input is a Vector2D
 	CurrentMoveInput = Value.Get<FVector2D>();
 
 	if (bIsDashing || bIsGroundPounding) return;
-	
+
 	if (bIsLedgeHanging)
 	{
 		if (CurrentMoveInput.Y < -0.5f)
@@ -275,57 +229,46 @@ void ABunny_Third_PersonCharacter::MoveCompleted(const FInputActionValue& Value)
 
 void ABunny_Third_PersonCharacter::Look(const FInputActionValue& Value)
 {
-	// input is a Vector2D
-	FVector2D LookAxisVector = Value.Get<FVector2D>();
-
-	// route the input
-	DoLook(LookAxisVector.X, LookAxisVector.Y);
+	const FVector2D LookAxis = Value.Get<FVector2D>();
+	DoLook(LookAxis.X, LookAxis.Y);
 }
 
 void ABunny_Third_PersonCharacter::DoMove(float Right, float Forward)
 {
-	if (GetController() != nullptr)
-	{
-		// find out which way is forward
-		const FRotator Rotation = GetController()->GetControlRotation();
-		const FRotator YawRotation(0, Rotation.Yaw, 0);
+	if (!Controller) return;
 
-		// get forward vector
-		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+	const FRotator Rotation = Controller->GetControlRotation();
+	const FRotator YawRotation(0.f, Rotation.Yaw, 0.f);
 
-		// get right vector 
-		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+	const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+	const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
-		// add movement 
-		AddMovementInput(ForwardDirection, Forward);
-		AddMovementInput(RightDirection, Right);
-	}
+	AddMovementInput(ForwardDirection, Forward);
+	AddMovementInput(RightDirection, Right);
 }
 
 void ABunny_Third_PersonCharacter::DoLook(float Yaw, float Pitch)
 {
-	if (GetController() != nullptr)
-	{
-		// add yaw and pitch input to controller
-		AddControllerYawInput(Yaw);
-		AddControllerPitchInput(Pitch);
-	}
+	if (!Controller) return;
+	AddControllerYawInput(Yaw);
+	AddControllerPitchInput(Pitch);
 }
 
+// -----------------------------------------------------------------------------
+// Unified Jump Logic
+// -----------------------------------------------------------------------------
 void ABunny_Third_PersonCharacter::DoJumpStart()
 {
 	if (bIsGroundPounding) return;
 
-	// Jump directly out of crouch / slide
 	if (bIsCrouched)
 	{
 		UnCrouch();
 	}
 
-	// If Holding on ladge
+	// 1. Ledge Climb / Drop
 	if (bIsLedgeHanging)
 	{
-		// if moved back, drop down
 		if (CurrentMoveInput.Y < -0.2f)
 		{
 			DropFromLedge();
@@ -336,102 +279,92 @@ void ABunny_Third_PersonCharacter::DoJumpStart()
 		}
 		return;
 	}
-	
-	
-	// No Object movement on a wall 
-	if (bJustWallJumped || bIsWallSliding)
+
+	// 2. Wall Jump
+	if (TryWallJump())
 	{
 		return;
 	}
 
-	// signal the character to jump
+	// 3. Single Ground Jump
 	if (CanJump())
 	{
 		Jump();
 		return;
 	}
 
-	// if player have normal jump and dubble 
+	// 4. Object-Assisted Jump (Mid-air boost by throwing held object downwards)
 	if (HeldGrabObject && GetCharacterMovement()->IsFalling())
 	{
-		/**
-		Add back when test done
-		*/
-		//// Object under his feet
-		//float HalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-		//FVector DropLocation = GetActorLocation() - FVector(0.0f, 0.0f, HalfHeight + 35.0f);
-		//HeldGrabObject->SetActorLocation(DropLocation);
-
-		/**
-		Test idea for object underplayer
-		*/
 		const float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
 		const FVector PlayerLocation = GetActorLocation();
-		const float CapsuleBottomZ = PlayerLocation.Z - CapsuleHalfHeight; //Get's the Capsule Z location 
+		const float CapsuleBottomZ = PlayerLocation.Z - CapsuleHalfHeight;
 
-		FVector Origin, BoxExtent; 
+		FVector Origin, BoxExtent;
 		HeldGrabObject->GetActorBounds(true, Origin, BoxExtent);
 
-		// -- RAYCAST for ground
 		FHitResult GroundHit;
-		FVector TraceStart = PlayerLocation;
-
-		float TraceDistance = CapsuleHalfHeight + (BoxExtent.Z * 2.0f) + 100.0f;
-		FVector TraceEnd = TraceStart - FVector(0.0f, 0.0f, TraceDistance);
+		const FVector TraceStart = PlayerLocation;
+		const float TraceDistance = CapsuleHalfHeight + (BoxExtent.Z * 2.0f) + 100.0f;
+		const FVector TraceEnd = TraceStart - FVector(0.0f, 0.0f, TraceDistance);
 
 		FCollisionQueryParams QueryParams;
 		QueryParams.AddIgnoredActor(this);
 		QueryParams.AddIgnoredActor(HeldGrabObject);
 
-		FCollisionObjectQueryParams ObjectParams; 
+		FCollisionObjectQueryParams ObjectParams;
 		ObjectParams.AddObjectTypesToQuery(ECC_WorldStatic);
 		ObjectParams.AddObjectTypesToQuery(ECC_WorldDynamic);
 
-		bool bHitGround = GetWorld()->LineTraceSingleByObjectType(
-			GroundHit,
-			TraceStart,
-			TraceEnd,
-			ObjectParams,
-			QueryParams
-		);
+		const bool bHitGround = GetWorld()->LineTraceSingleByObjectType(GroundHit, TraceStart, TraceEnd, ObjectParams, QueryParams);
 
-		// Mid-air placement
-		FVector FinelBoxLocation = FVector(PlayerLocation.X, PlayerLocation.Y, CapsuleBottomZ - BoxExtent.Z - 10.0f);
-		FVector FinelImpulse = FVector(0.0f, 0.0f, -ObjectDownImpulse); // hold
+		FVector FinalBoxLocation = FVector(PlayerLocation.X, PlayerLocation.Y, CapsuleBottomZ - BoxExtent.Z - 10.0f);
+		FVector FinalImpulse = FVector(0.0f, 0.0f, -ObjectDownImpulse);
 
-		//Place Objcet on ground whem raycast is close to the ground 
 		if (bHitGround)
 		{
-			const float GroundZ = GroundHit.ImpactPoint.Z;
-			const float MinBoxZ = GroundZ + BoxExtent.Z + 1.0f;
-
-			if (FinelBoxLocation.Z < MinBoxZ)
+			const float MinBoxZ = GroundHit.ImpactPoint.Z + BoxExtent.Z + 1.0f;
+			if (FinalBoxLocation.Z < MinBoxZ)
 			{
-				FinelBoxLocation.Z = MinBoxZ;
-				FinelImpulse = FVector::ZeroVector;
+				FinalBoxLocation.Z = MinBoxZ;
+				FinalImpulse = FVector::ZeroVector;
 			}
 		}
-		
-		HeldGrabObject->PlaceAndDrop(FinelBoxLocation, FinelImpulse);
-		HeldGrabObject = nullptr;
-		/**
-		Test code end
-		*/
 
-		// The jump
+		HeldGrabObject->PlaceAndDrop(FinalBoxLocation, FinalImpulse);
+		HeldGrabObject = nullptr;
+
 		LaunchCharacter(FVector(0.0f, 0.0f, ObjectJumpBoost), false, true);
 	}
 }
 
 void ABunny_Third_PersonCharacter::DoJumpEnd()
 {
-	// signal the character to stop jumping
 	StopJumping();
 }
 
+bool ABunny_Third_PersonCharacter::TryWallJump()
+{
+	if (!bCanWallJump && !bIsWallSliding)
+	{
+		return false;
+	}
+
+	StopWallSlide();
+
+	const FVector JumpDirection = (WallNormal * WallJumpHorizontalForce) + FVector(0.0f, 0.0f, WallJumpVerticalForce);
+	LaunchCharacter(JumpDirection, true, true);
+	SetActorRotation(WallNormal.Rotation());
+
+	bCanWallJump = false;
+	return true;
+}
+
+// -----------------------------------------------------------------------------
+// Object Grab
+// -----------------------------------------------------------------------------
 void ABunny_Third_PersonCharacter::DoGrab()
 {
-	// if holding a object, drop it
 	if (HeldGrabObject)
 	{
 		HeldGrabObject->DropObject();
@@ -442,18 +375,19 @@ void ABunny_Third_PersonCharacter::DoGrab()
 	if (NearbyGrabObject && !NearbyGrabObject->IsHeld())
 	{
 		HeldGrabObject = NearbyGrabObject;
-
 		HeldGrabObject->GrabObject(GetMesh(), FName("right_hand"));
 	}
 }
 
+// -----------------------------------------------------------------------------
+// Crouch & Ground Pound
+// -----------------------------------------------------------------------------
 void ABunny_Third_PersonCharacter::DoCrouch()
 {
 	if (bIsGroundPounding) return;
 
 	const float CurrentTime = GetWorld()->GetTimeSeconds();
 
-	// Double tap triggers
 	if ((CurrentTime - LastCrouchPressTime) <= DoubleTapCrouchThreshold)
 	{
 		LastCrouchPressTime = -1.0f;
@@ -463,7 +397,6 @@ void ABunny_Third_PersonCharacter::DoCrouch()
 
 	LastCrouchPressTime = CurrentTime;
 
-	// Crouch Toggle
 	if (bIsCrouched)
 	{
 		UnCrouch();
@@ -474,27 +407,84 @@ void ABunny_Third_PersonCharacter::DoCrouch()
 	}
 }
 
+void ABunny_Third_PersonCharacter::StartGroundPound()
+{
+	if (bIsGroundPounding) return;
+
+	if (bIsLedgeHanging) DropFromLedge();
+	StopWallSlide();
+	if (bIsDashing) StopDash();
+	if (bIsCrouched) UnCrouch();
+
+	bIsGroundPounding = true;
+	GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+	GetCharacterMovement()->Velocity = FVector(0.0f, 0.0f, -GroundPoundSpeed);
+}
+
+void ABunny_Third_PersonCharacter::StopGroundPound()
+{
+	if (!bIsGroundPounding) return;
+
+	bIsGroundPounding = false;
+	GetCharacterMovement()->GravityScale = DefaultGravityScale;
+}
+
+// -----------------------------------------------------------------------------
+// Dash & Sprint
+// -----------------------------------------------------------------------------
+void ABunny_Third_PersonCharacter::OnDashButtonPressed()
+{
+	if (bIsDashing || bIsGroundPounding) return;
+
+	GetWorldTimerManager().SetTimer(
+		HoldToRunTimerHandle, this, &ABunny_Third_PersonCharacter::StartSprint, HoldToRunThreshold, false);
+}
+
+void ABunny_Third_PersonCharacter::OnDashButtonReleased()
+{
+	const bool bWasTap = GetWorldTimerManager().IsTimerActive(HoldToRunTimerHandle);
+	GetWorldTimerManager().ClearTimer(HoldToRunTimerHandle);
+
+	if (bIsSprinting)
+	{
+		StopSprint();
+	}
+	else if (bWasTap)
+	{
+		StartDash();
+	}
+}
+
+void ABunny_Third_PersonCharacter::StartSprint()
+{
+	if (!GetCharacterMovement()->IsMovingOnGround()) return;
+
+	bIsSprinting = true;
+	GetCharacterMovement()->MaxWalkSpeed = SprintSpeed;
+}
+
+void ABunny_Third_PersonCharacter::StopSprint()
+{
+	bIsSprinting = false;
+	GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
+}
+
 void ABunny_Third_PersonCharacter::StartDash()
 {
 	if (bIsDashing || bDashOnCoolDown || bIsGroundPounding) return;
 
-	if (bIsLedgeHanging)
-	{
-		DropFromLedge();
-	}
-
+	if (bIsLedgeHanging) DropFromLedge();
 	StopWallSlide();
 
 	const bool bIsGrounded = GetCharacterMovement()->IsMovingOnGround();
 	bool bIsObjectAirDash = false;
 
-	// Dash Logic 
 	if (!bIsGrounded)
 	{
 		if (bCanAirDash)
 		{
 			bCanAirDash = false;
-		} 
+		}
 		else if (HeldGrabObject)
 		{
 			bIsObjectAirDash = true;
@@ -505,56 +495,51 @@ void ABunny_Third_PersonCharacter::StartDash()
 		}
 	}
 
-	// cheack if player press (WASD)
-	if (!CurrentMoveInput.IsNearlyZero()) 
+	if (!CurrentMoveInput.IsNearlyZero())
 	{
-		FRotator ControlRot = Controller ? Controller->GetControlRotation() : GetActorRotation();
-		FRotator YawRot(0.f, ControlRot.Yaw, 0.f);
+		const FRotator ControlRot = Controller ? Controller->GetControlRotation() : GetActorRotation();
+		const FRotator YawRot(0.f, ControlRot.Yaw, 0.f);
 
 		const FVector CameraForward = FRotationMatrix(YawRot).GetUnitAxis(EAxis::X);
 		const FVector CameraRight = FRotationMatrix(YawRot).GetUnitAxis(EAxis::Y);
 
 		DashDirection = (CameraForward * CurrentMoveInput.Y) + (CameraRight * CurrentMoveInput.X);
 	}
-	else { // Dash where Model is looking 
+	else
+	{
 		DashDirection = GetActorForwardVector();
 	}
-	
+
 	DashDirection.Z = 0.0f;
 	DashDirection.Normalize();
 
-	//Rotate the player to the dash
 	FRotator FaceRotate = DashDirection.Rotation();
 	FaceRotate.Pitch = 0.0f;
 	FaceRotate.Roll = 0.0f;
 	SetActorRotation(FaceRotate);
 
-	// Air Dash Logic	
+	// Object ejection during air dash
 	if (bIsObjectAirDash && HeldGrabObject)
 	{
 		FVector Origin, BoxExtent;
 		HeldGrabObject->GetActorBounds(true, Origin, BoxExtent);
 
-		// Send Object Behind Player
-		const float OffsetDistance = GetCapsuleComponent()->GetScaledCapsuleRadius() + FMath::Max(BoxExtent.X, BoxExtent.Y) + 20.0f;
+		const float OffsetDist = GetCapsuleComponent()->GetScaledCapsuleRadius() + FMath::Max(BoxExtent.X, BoxExtent.Y) + 20.0f;
 		const FVector TraceStart = GetActorLocation();
-		const FVector TraceEnd = TraceStart - (DashDirection * OffsetDistance);
+		const FVector TraceEnd = TraceStart - (DashDirection * OffsetDist);
 
-		// Prevent clipping 
 		FHitResult WallHit;
 		FCollisionQueryParams QueryParams;
 		QueryParams.AddIgnoredActor(this);
 		QueryParams.AddIgnoredActor(HeldGrabObject);
 
 		FVector DropLocation = TraceEnd;
-		if (GetWorld()->LineTraceSingleByChannel(WallHit, TraceStart, TraceEnd, ECollisionChannel::ECC_WorldStatic, QueryParams))
+		if (GetWorld()->LineTraceSingleByChannel(WallHit, TraceStart, TraceEnd, ECC_WorldStatic, QueryParams))
 		{
 			DropLocation = WallHit.Location + (DashDirection * 10.0f);
 		}
 
-		//Push Object
-		const FVector PushImpulse = -DashDirection * ObjectDownImpulse;
-		HeldGrabObject->PlaceAndDrop(DropLocation, PushImpulse);
+		HeldGrabObject->PlaceAndDrop(DropLocation, -DashDirection * ObjectDownImpulse);
 		HeldGrabObject = nullptr;
 	}
 
@@ -571,12 +556,10 @@ void ABunny_Third_PersonCharacter::StartDash()
 void ABunny_Third_PersonCharacter::StopDash()
 {
 	if (!bIsDashing) return;
-	
-	bIsDashing = false;
 
+	bIsDashing = false;
 	GetCharacterMovement()->GravityScale = DefaultGravityScale;
-	FVector CurrentVel = GetCharacterMovement()->Velocity;
-	GetCharacterMovement()->Velocity = CurrentVel.GetClampedToMaxSize(DashExitSpeed);
+	GetCharacterMovement()->Velocity = GetCharacterMovement()->Velocity.GetClampedToMaxSize(DashExitSpeed);
 }
 
 void ABunny_Third_PersonCharacter::ResetDashCooldown()
@@ -588,45 +571,19 @@ void ABunny_Third_PersonCharacter::Landed(const FHitResult& Hit)
 {
 	Super::Landed(Hit);
 
-	if (bIsGroundPounding)
-	{
-		StopGroundPound();
-	}
-
-	bCanLedgeGrab = true;
-	GetWorldTimerManager().ClearTimer(LedgeCooldownTimerHandle);
-
-	if (bIsLedgeHanging)
-	{
-		DropFromLedge();
-	}
+	if (bIsGroundPounding) StopGroundPound();
+	if (bIsLedgeHanging)   DropFromLedge();
 
 	StopWallSlide();
+
+	bCanLedgeGrab = true;
 	bCanAirDash = true;
+	GetWorldTimerManager().ClearTimer(LedgeCooldownTimerHandle);
 }
 
-void ABunny_Third_PersonCharacter::DoWallJumpLedge()
-{
-	if (bIsGroundPounding) return;
-
-	if (bCanWallJump || bIsWallSliding)
-	{
-		StopWallSlide();
-
-		// Calculate Jump direction
-		const FVector JumpDirection = (WallNormal * WallJumpHorizontalForce) + FVector(0.0f, 0.0f, WallJumpVerticalForce);
-		LaunchCharacter(JumpDirection, true, true);
-
-		GEngine->AddOnScreenDebugMessage(-1, 0.5f, FColor::Black, TEXT("Wall Jump"));
-
-		// Rotate character away from wall ??? change for the animation 
-		const FRotator NewRotation = WallNormal.Rotation();
-		SetActorRotation(NewRotation);
-
-		bCanWallJump = false;
-	}
-}
-
+// -----------------------------------------------------------------------------
+// Wall Slide & Wall Stick
+// -----------------------------------------------------------------------------
 void ABunny_Third_PersonCharacter::StartWallSlide(const FVector& HitNormal, UPrimitiveComponent* HitComponent)
 {
 	if (bIsGroundPounding) return;
@@ -671,9 +628,7 @@ void ABunny_Third_PersonCharacter::StartWallStick()
 	GetCharacterMovement()->Velocity = FVector::ZeroVector;
 
 	GetWorldTimerManager().ClearTimer(WallStickTimeHandle);
-	GetWorldTimerManager().SetTimer(WallStickTimeHandle, 
-		this, &ABunny_Third_PersonCharacter::OnWallStickEnd, 
-		WallStickDuration, false);
+	GetWorldTimerManager().SetTimer(WallStickTimeHandle, this, &ABunny_Third_PersonCharacter::OnWallStickEnd, WallStickDuration, false);
 }
 
 void ABunny_Third_PersonCharacter::OnWallStickEnd()
@@ -697,13 +652,9 @@ void ABunny_Third_PersonCharacter::StopWallSlide()
 
 bool ABunny_Third_PersonCharacter::IsPushingIntoWall() const
 {
-	if (CurrentMoveInput.IsNearlyZero() || GetController() == nullptr)
-	{
-		return false;
-	}
-	
-	// Calculate the World space movement input direction 
-	const FRotator YawRotation(0.0f, GetController()->GetControlRotation().Yaw, 0.0f);
+	if (CurrentMoveInput.IsNearlyZero() || !Controller) return false;
+
+	const FRotator YawRotation(0.0f, Controller->GetControlRotation().Yaw, 0.0f);
 	const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
 	const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 	const FVector InputWorldDir = (ForwardDirection * CurrentMoveInput.Y + RightDirection * CurrentMoveInput.X).GetSafeNormal();
@@ -711,121 +662,70 @@ bool ABunny_Third_PersonCharacter::IsPushingIntoWall() const
 	return FVector::DotProduct(InputWorldDir, WallNormal) < -0.4f;
 }
 
-void ABunny_Third_PersonCharacter::OnDashButtonPressed()
+// -----------------------------------------------------------------------------
+// Ledge Mechanics & Shared Trace
+// -----------------------------------------------------------------------------
+bool ABunny_Third_PersonCharacter::TraceLedgeSurface(
+	const FVector& RayStart,
+	const FVector& ForwardDir,
+	float ForwardDist,
+	FHitResult& OutWallHit,
+	FHitResult& OutLedgeHit) const
 {
-	if (bIsDashing || bIsGroundPounding) return;
-
-	//Set Timer
-	GetWorldTimerManager().SetTimer(
-		HoldToRunTimerHandle,
-		this,
-		&ABunny_Third_PersonCharacter::StartSprint,
-		HoldToRunThresHold,
-		false
-	);
-
-}
-
-void ABunny_Third_PersonCharacter::OnDashButtonReleased()
-{
-	//Reset Timer
-	const bool bWasTap = GetWorldTimerManager().IsTimerActive(HoldToRunTimerHandle);
-	GetWorldTimerManager().ClearTimer(HoldToRunTimerHandle);
-
-	if (bIsSprinting)
-	{
-		StopSprint();
-	}
-	else if (bWasTap)
-	{
-		StartDash();
-	}
-}
-
-void ABunny_Third_PersonCharacter::StartSprint()
-{
-	if (!GetCharacterMovement()->IsMovingOnGround()) return;
-
-	bIsSprinting = true;
-	GetCharacterMovement()->MaxWalkSpeed = SprintSpeed;
-}
-
-void ABunny_Third_PersonCharacter::StopSprint()
-{
-	bIsSprinting = false;
-	GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
-}
-
-// Nathan - Attack Function
-void ABunny_Third_PersonCharacter::DoAttack()
-{
-
-	if (CombatComp) {
-
-		CombatComp->Attack();
-	}
-}
-
-// Trace to find the ledge
-bool ABunny_Third_PersonCharacter::DetectLedge(FVector& OutLedgeLoc, FVector& OutWallNormal, UPrimitiveComponent*& OutHitComponent)
-{
-	if (bIsGroundPounding) return false;
-
-	OutHitComponent = nullptr;
-	
-	FCollisionQueryParams TraceParams(FName(TEXT("LedgeTrace")), true, this );
+	FCollisionQueryParams TraceParams(FName(TEXT("LedgeSurfaceTrace")), true, this);
 	TraceParams.AddIgnoredActor(this);
 	if (HeldGrabObject)
 	{
 		TraceParams.AddIgnoredActor(HeldGrabObject);
 	}
 
-	const FVector ActorLoc = GetActorLocation();
-	const FVector Forward = GetActorForwardVector();
-
-	// Place it in head / eye lvl
-	FVector ForwardStart = ActorLoc + FVector(0.0f, 0.0f, 30.0f);
-	FVector ForwardEnd = ForwardStart + (Forward * LedgeGrabForwardReach);
-
-	FHitResult WallHit; 
-	bool bHitWall = GetWorld()->LineTraceSingleByChannel(
-		WallHit, ForwardStart, ForwardEnd, ECC_WorldStatic, TraceParams);
-
-	if (!bHitWall || FMath::Abs(WallHit.Normal.Z) > 0.15f)
+	// 1. Raycast forward to find wall surface
+	const FVector ForwardEnd = RayStart + (ForwardDir * ForwardDist);
+	if (!GetWorld()->LineTraceSingleByChannel(OutWallHit, RayStart, ForwardEnd, ECC_WorldStatic, TraceParams))
 	{
 		return false;
 	}
 
-	// to find the top surface of the wall
+	if (FMath::Abs(OutWallHit.Normal.Z) > 0.15f)
+	{
+		return false;
+	}
+
+	// 2. Raycast downward into wall to find top flat ledge edge
 	const float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	FVector DownStart = WallHit.ImpactPoint - (WallHit.Normal * 15.0f);
-	DownStart.Z = ActorLoc.Z + CapsuleHalfHeight + LedgeGrabTraceHeight;
-	FVector DownEnd = FVector(DownStart.X, DownStart.Y, ActorLoc.Z);
+	FVector DownStart = OutWallHit.ImpactPoint - (OutWallHit.Normal * 15.0f);
+	DownStart.Z = GetActorLocation().Z + CapsuleHalfHeight + LedgeGrabTraceHeight;
+	const FVector DownEnd = FVector(DownStart.X, DownStart.Y, GetActorLocation().Z - 30.0f);
 
-	FHitResult LedgeHit;
-	bool bHitLedge = GetWorld()->LineTraceSingleByChannel(
-		LedgeHit, DownStart, DownEnd, ECC_WorldStatic, TraceParams);
-
-	if (!bHitLedge || LedgeHit.bStartPenetrating)
+	if (!GetWorld()->LineTraceSingleByChannel(OutLedgeHit, DownStart, DownEnd, ECC_WorldStatic, TraceParams))
 	{
 		return false;
 	}
 
-	// flat scale
-	if (LedgeHit.Normal.Z < 0.7f)
+	return (!OutLedgeHit.bStartPenetrating && OutLedgeHit.Normal.Z >= 0.7f);
+}
+
+bool ABunny_Third_PersonCharacter::DetectLedge(FVector& OutLedgeLoc, FVector& OutWallNormal, UPrimitiveComponent*& OutHitComponent)
+{
+	if (bIsGroundPounding) return false;
+
+	OutHitComponent = nullptr;
+
+	FHitResult WallHit, LedgeHit;
+	const FVector ForwardStart = GetActorLocation() + FVector(0.0f, 0.0f, 30.0f);
+
+	if (!TraceLedgeSurface(ForwardStart, GetActorForwardVector(), LedgeGrabForwardReach, WallHit, LedgeHit))
 	{
 		return false;
 	}
 
 	OutLedgeLoc = LedgeHit.ImpactPoint;
 	OutWallNormal = WallHit.Normal;
-
 	OutHitComponent = WallHit.GetComponent() ? WallHit.GetComponent() : LedgeHit.GetComponent();
 	return true;
 }
 
-void ABunny_Third_PersonCharacter::StartLedgeGrab(const FVector& InLedgeLoc, const FVector& InWallNormal,
-	UPrimitiveComponent* HitComponent)
+void ABunny_Third_PersonCharacter::StartLedgeGrab(const FVector& InLedgeLoc, const FVector& InWallNormal, UPrimitiveComponent* HitComponent)
 {
 	if (bIsGroundPounding) return;
 
@@ -845,16 +745,13 @@ void ABunny_Third_PersonCharacter::StartLedgeGrab(const FVector& InLedgeLoc, con
 
 	StopWallSlide();
 
-	// Freeze Player
 	GetCharacterMovement()->SetMovementMode(MOVE_Flying);
 	GetCharacterMovement()->Velocity = FVector::ZeroVector;
 	GetCharacterMovement()->GravityScale = 0.0f;
 
-	// Positon character up
 	const float CapsuleRadius = GetCapsuleComponent()->GetScaledCapsuleRadius();
 	FVector SnapLocation = LedgeLocation + (LedgeWallNormal * (CapsuleRadius + 10.0f));
 	SnapLocation.Z = LedgeLocation.Z - LedgeHangVerticalOffset;
-
 	SetActorLocation(SnapLocation);
 
 	FRotator FaceWall = (-LedgeWallNormal).Rotation();
@@ -872,14 +769,10 @@ void ABunny_Third_PersonCharacter::DropFromLedge()
 
 	GetCharacterMovement()->SetMovementMode(MOVE_Falling);
 	GetCharacterMovement()->GravityScale = DefaultGravityScale;
-
-	const FVector PushAwayForce = (LedgeWallNormal * 150.0f) + FVector(0.0f, 0.0f, -100.0f);
-	GetCharacterMovement()->Velocity = PushAwayForce;
+	GetCharacterMovement()->Velocity = (LedgeWallNormal * 150.0f) + FVector(0.0f, 0.0f, -100.0f);
 
 	GetWorldTimerManager().SetTimer(
-		LedgeCooldownTimerHandle, this,
-		&ABunny_Third_PersonCharacter::ResetLedgeGrabCooldown,
-		LedgeGrabCooldown, false);
+		LedgeCooldownTimerHandle, this, &ABunny_Third_PersonCharacter::ResetLedgeGrabCooldown, LedgeGrabCooldown, false);
 }
 
 void ABunny_Third_PersonCharacter::ClimbUpLedge()
@@ -890,10 +783,9 @@ void ABunny_Third_PersonCharacter::ClimbUpLedge()
 	bCanLedgeGrab = true;
 	GetWorldTimerManager().ClearTimer(LedgeCooldownTimerHandle);
 
-	//Target top of the ledge 
 	const float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
 	const float CapsuleRadius = GetCapsuleComponent()->GetScaledCapsuleRadius();
-	
+
 	FVector TargetLocation = GetActorLocation() - (LedgeWallNormal * (CapsuleRadius + 20.0f));
 	TargetLocation.Z = LedgeLocation.Z + CapsuleHalfHeight + 5.0f;
 
@@ -911,43 +803,14 @@ void ABunny_Third_PersonCharacter::ResetLedgeGrabCooldown()
 
 bool ABunny_Third_PersonCharacter::CanShimmy(float DirectionSign, FVector& OutLedgeLoc, FVector& OutWallNormal)
 {
-	// Find the vector pointing to the player along the wall 
 	const FVector WallRight = FVector::CrossProduct(LedgeWallNormal, FVector::UpVector).GetSafeNormal();
 	const float CapsuleRadius = GetCapsuleComponent()->GetScaledCapsuleRadius();
 
-	const float CheckDistance = 20.0f;
-	const FVector SideOffset = WallRight * DirectionSign * CheckDistance;
-	const FVector TestOrigin = GetActorLocation() + SideOffset;
+	const FVector SideOffset = WallRight * DirectionSign * 20.0f;
+	const FVector ForwardStart = GetActorLocation() + SideOffset + FVector(0.0f, 0.0f, 30.0f);
 
-	FCollisionQueryParams TraceParams(FName(TEXT("LedgeMoveTrace")), true, this);
-	TraceParams.AddIgnoredActor(this);
-	if (HeldGrabObject)
-	{
-		TraceParams.AddIgnoredActor(HeldGrabObject);
-	}
-
-	//find the wall
-	const FVector ForwardStart = TestOrigin + FVector(0.0f, 0.0f, 30.0f);
-	const FVector ForwardEnd = ForwardStart + (-LedgeWallNormal * (CapsuleRadius + 40.0f));
-
-	FHitResult WallHit;
-	bool bHitWall = GetWorld()->LineTraceSingleByChannel(WallHit, ForwardStart, ForwardEnd, ECC_WorldStatic, TraceParams);
-
-	if (!bHitWall || FMath::Abs(WallHit.Normal.Z) > 0.15f)
-	{
-		return false;
-	}
-
-	// Trace downward so it can comfirm top ledge
-	const float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	FVector DownStart = WallHit.ImpactPoint - (WallHit.Normal * 15.0f);
-	DownStart.Z = GetActorLocation().Z + CapsuleHalfHeight + LedgeGrabTraceHeight;
-	FVector DownEnd = FVector(DownStart.X, DownStart.Y, GetActorLocation().Z);
-
-	FHitResult LedgeHit;
-	bool bHitLedge = GetWorld()->LineTraceSingleByChannel(LedgeHit, DownStart, DownEnd, ECC_WorldStatic, TraceParams);
-
-	if (!bHitLedge || LedgeHit.bStartPenetrating || LedgeHit.Normal.Z < 0.7f)
+	FHitResult WallHit, LedgeHit;
+	if (!TraceLedgeSurface(ForwardStart, -LedgeWallNormal, CapsuleRadius + 40.0f, WallHit, LedgeHit))
 	{
 		return false;
 	}
@@ -959,74 +822,38 @@ bool ABunny_Third_PersonCharacter::CanShimmy(float DirectionSign, FVector& OutLe
 
 void ABunny_Third_PersonCharacter::TickLedgeShimmy(float DeltaTime)
 {
-	if (FMath::Abs(CurrentMoveInput.X) < 0.15f)
-	{
-		return;
-	}
+	if (FMath::Abs(CurrentMoveInput.X) < 0.15f) return;
 
 	const float DirectionSign = FMath::Sign(CurrentMoveInput.X);
-
-	// find if you at ledge
 	FVector AheadLedgeLoc, NewWallNormal;
 	if (!CanShimmy(DirectionSign, AheadLedgeLoc, NewWallNormal))
 	{
 		return;
 	}
 
-	const FVector WallRight = FVector::CrossProduct(LedgeWallNormal,FVector::UpVector).GetSafeNormal();
-	const float MoveAmount = CurrentMoveInput.X * LedgeShimmySpeed * DeltaTime;
-	const FVector DesiredMovement = WallRight * MoveAmount;
-
+	const FVector WallRight = FVector::CrossProduct(LedgeWallNormal, FVector::UpVector).GetSafeNormal();
+	const FVector DesiredMovement = WallRight * (CurrentMoveInput.X * LedgeShimmySpeed * DeltaTime);
 	AddActorWorldOffset(DesiredMovement, false);
 
 	const float CapsuleRadius = GetCapsuleComponent()->GetScaledCapsuleRadius();
-	const float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	const FVector ForwardStart = GetActorLocation() + FVector(0.0f, 0.0f, 30.0f);
 
-	FCollisionQueryParams TraceParams(FName(TEXT("LedgeSnapTrace")), true, this);
-	TraceParams.AddIgnoredActor(this);
-	if (HeldGrabObject)
+	FHitResult WallHit, LedgeHit;
+	if (TraceLedgeSurface(ForwardStart, -LedgeWallNormal, CapsuleRadius + 40.0f, WallHit, LedgeHit))
 	{
-		TraceParams.AddIgnoredActor(HeldGrabObject);
+		LedgeWallNormal = WallHit.Normal;
+		LedgeLocation = FVector(WallHit.ImpactPoint.X, WallHit.ImpactPoint.Y, LedgeHit.ImpactPoint.Z);
+
+		FVector SnappedLocation = WallHit.ImpactPoint + (LedgeWallNormal * (CapsuleRadius + 5.0f));
+		SnappedLocation.Z = LedgeLocation.Z - LedgeHangVerticalOffset;
+		SetActorLocation(SnappedLocation, false);
 	}
-
-	const FVector ActorLoc = GetActorLocation();
-	const FVector ForwardStart = ActorLoc + FVector(0.0f, 0.0f, 30.0f);
-	const FVector ForwardEnd = ForwardStart + (-LedgeWallNormal * (CapsuleRadius + 40.0f));
-
-	FHitResult WallHit;
-	if (GetWorld()->LineTraceSingleByChannel(WallHit, ForwardStart, ForwardEnd, ECC_WorldStatic, TraceParams))
+	else
 	{
-		if (FMath::Abs(WallHit.Normal.Z) <= 0.15f)
-		{
-			LedgeWallNormal = WallHit.Normal;
-
-			FVector DownStart = WallHit.ImpactPoint - (WallHit.Normal * 15.0f);
-			DownStart.Z = ActorLoc.Z + CapsuleHalfHeight + LedgeGrabTraceHeight;
-			FVector DownEnd = FVector(DownStart.X, DownStart.Y, ActorLoc.Z - 30.0f);
-
-			FHitResult LedgeHit;
-			if (GetWorld()->LineTraceSingleByChannel(LedgeHit, DownStart, DownEnd, ECC_WorldStatic, TraceParams))
-			{
-				if (!LedgeHit.bStartPenetrating && LedgeHit.Normal.Z >= 0.7f)
-				{
-					LedgeLocation = FVector(WallHit.ImpactPoint.X, WallHit.ImpactPoint.Y, LedgeHit.ImpactPoint.Z);
-				}
-			}
-
-			FVector SnappedLocation = WallHit.ImpactPoint + (LedgeWallNormal * (CapsuleRadius + 5.0f));
-			SnappedLocation.Z = LedgeLocation.Z - LedgeHangVerticalOffset;
-			SetActorLocation(SnappedLocation, false);
-
-			FRotator FaceWall = (-LedgeWallNormal).Rotation();
-			FaceWall.Pitch = 0.0f;
-			FaceWall.Roll = 0.0f;
-			SetActorRotation(FaceWall);
-			return;
-		}
+		FVector TargetPos = GetActorLocation();
+		TargetPos.Z = LedgeLocation.Z - LedgeHangVerticalOffset;
+		SetActorLocation(TargetPos, false);
 	}
-	FVector TargetPos = GetActorLocation();
-	TargetPos.Z = LedgeLocation.Z - LedgeHangVerticalOffset;
-	SetActorLocation(TargetPos, false);
 
 	FRotator FaceWall = (-LedgeWallNormal).Rotation();
 	FaceWall.Pitch = 0.0f;
@@ -1036,13 +863,9 @@ void ABunny_Third_PersonCharacter::TickLedgeShimmy(float DeltaTime)
 
 void ABunny_Third_PersonCharacter::UpdateMovingBaseMovement()
 {
-	if (!MovingBaseComponent.IsValid())
-	{
-		return;
-	}
+	if (!MovingBaseComponent.IsValid()) return;
 
 	const FTransform CurrentBaseTransform = MovingBaseComponent->GetComponentTransform();
-
 	const FQuat DeltaRotation = CurrentBaseTransform.GetRotation() * PreviousBaseTransform.GetRotation().Inverse();
 	const FTransform LocalTransform = GetActorTransform().GetRelativeTransform(PreviousBaseTransform);
 	const FTransform NewWorldTransform = LocalTransform * CurrentBaseTransform;
@@ -1056,35 +879,14 @@ void ABunny_Third_PersonCharacter::UpdateMovingBaseMovement()
 
 	LedgeWallNormal = DeltaRotation.RotateVector(LedgeWallNormal);
 	WallNormal = DeltaRotation.RotateVector(WallNormal);
-
 	LedgeLocation = CurrentBaseTransform.TransformPosition(PreviousBaseTransform.InverseTransformPosition(LedgeLocation));
 
 	PreviousBaseTransform = CurrentBaseTransform;
 }
 
-void ABunny_Third_PersonCharacter::StartGroundPound()
-{
-	if  (bIsGroundPounding) return;
-
-	if (bIsLedgeHanging) DropFromLedge();
-	StopWallSlide();
-	if (bIsDashing) StopDash();
-	if (bIsCrouched) UnCrouch();
-
-	bIsGroundPounding = true;
-
-	GetCharacterMovement()->SetMovementMode(MOVE_Falling);
-	GetCharacterMovement()->Velocity = FVector(0.0f, 0.0f, -GroundPoundSpeed);
-}
-
-void ABunny_Third_PersonCharacter::StopGroundPound()
-{
-	if (!bIsGroundPounding) return;
-
-	bIsGroundPounding = false;
-	GetCharacterMovement()->GravityScale = DefaultGravityScale;
-}
-
+// -----------------------------------------------------------------------------
+// Slope Slide
+// -----------------------------------------------------------------------------
 void ABunny_Third_PersonCharacter::TickSlopeSlide(float DeltaTime)
 {
 	if (!bIsCrouched || !GetCharacterMovement()->IsMovingOnGround())
@@ -1111,41 +913,32 @@ void ABunny_Third_PersonCharacter::TickSlopeSlide(float DeltaTime)
 	{
 		bIsSlopeSliding = true;
 
-		// Find the downhill direction
-		const FVector DownVector = FVector(0.0f, 0.0f, -1.0f);
+		const FVector DownVector(0.0f, 0.0f, -1.0f);
 		const FVector SlideDirection = FVector::VectorPlaneProject(DownVector, FloorNormal).GetSafeNormal();
 
-		// Remove ground friction 
 		GetCharacterMovement()->BrakingDecelerationWalking = 0.0f;
 
-		// Accelerate down the slope
 		FVector CurrentVelocity = GetCharacterMovement()->Velocity;
 		CurrentVelocity += SlideDirection * (SlopeSlideAcceleration * DeltaTime);
 		CurrentVelocity = CurrentVelocity.GetClampedToMaxSize(MaxSlopeSlideSpeed);
 		GetCharacterMovement()->Velocity = CurrentVelocity;
 
-		// Rotate facing down the slope
 		FRotator TargetRotation = SlideDirection.Rotation();
 		TargetRotation.Pitch = 0.0f;
 		TargetRotation.Roll = 0.0f;
 		SetActorRotation(FMath::RInterpTo(GetActorRotation(), TargetRotation, DeltaTime, 12.0f));
 	}
-	else
+	else if (bIsSlopeSliding)
 	{
-		if (bIsSlopeSliding)
-		{
-			bIsSlopeSliding = false;
-			GetCharacterMovement()->BrakingDecelerationWalking = DefaultBrakingDecelWalking;
-		}
+		bIsSlopeSliding = false;
+		GetCharacterMovement()->BrakingDecelerationWalking = DefaultBrakingDecelWalking;
 	}
 }
 
-bool ABunny_Third_PersonCharacter::IsGroundPounding() const
+void ABunny_Third_PersonCharacter::DoAttack()
 {
-	return bIsGroundPounding;
-}
-
-bool ABunny_Third_PersonCharacter::IsSlopeSliding() const
-{
-	return bIsSlopeSliding;
+	if (CombatComp)
+	{
+		CombatComp->Attack();
+	}
 }
