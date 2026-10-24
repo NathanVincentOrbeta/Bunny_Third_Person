@@ -50,6 +50,11 @@ ABunny_Third_PersonCharacter::ABunny_Third_PersonCharacter()
 	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
 	GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
 
+	// Enable Crouch
+	GetCharacterMovement()->GetNavAgentPropertiesRef().bCanCrouch = true;
+	GetCharacterMovement()->CrouchedHalfHeight = 48.0f;
+	DefaultBrakingDecelWalking = GetCharacterMovement()->BrakingDecelerationWalking;
+
 	// Create a camera boom (pulls in towards the player if there is a collision)
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
@@ -80,6 +85,7 @@ void ABunny_Third_PersonCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	DefaultGravityScale = GetCharacterMovement()->GravityScale;
+	DefaultBrakingDecelWalking = GetCharacterMovement()->BrakingDecelerationWalking;
 	WalkSpeed = GetCharacterMovement()->MaxWalkSpeed;
 	bCanAirDash = true;
 }
@@ -89,6 +95,18 @@ void ABunny_Third_PersonCharacter::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	bJustWallJumped = false;
+
+	// Ground Pound Logic
+	if (bIsGroundPounding)
+	{
+		GetCharacterMovement()->Velocity.X = 0.0f;
+		GetCharacterMovement()->Velocity.Y = 0.0f;
+		GetCharacterMovement()->Velocity.Z = -GroundPoundSpeed;
+		return;
+	}
+
+	// Slope Slide Logic
+	TickSlopeSlide(DeltaTime);
 
 	// Moving wall logic
 	if (bIsLedgeHanging || bIsWallSliding || bIsWallStick)
@@ -236,7 +254,7 @@ void ABunny_Third_PersonCharacter::Move(const FInputActionValue& Value)
 	// input is a Vector2D
 	CurrentMoveInput = Value.Get<FVector2D>();
 
-	if (bIsDashing) return;
+	if (bIsDashing || bIsGroundPounding) return;
 	
 	if (bIsLedgeHanging)
 	{
@@ -296,6 +314,14 @@ void ABunny_Third_PersonCharacter::DoLook(float Yaw, float Pitch)
 
 void ABunny_Third_PersonCharacter::DoJumpStart()
 {
+	if (bIsGroundPounding) return;
+
+	// Jump directly out of crouch / slide
+	if (bIsCrouched)
+	{
+		UnCrouch();
+	}
+
 	// If Holding on ladge
 	if (bIsLedgeHanging)
 	{
@@ -423,11 +449,34 @@ void ABunny_Third_PersonCharacter::DoGrab()
 
 void ABunny_Third_PersonCharacter::DoCrouch()
 {
+	if (bIsGroundPounding) return;
+
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+
+	// Double tap triggers
+	if ((CurrentTime - LastCrouchPressTime) <= DoubleTapCrouchThreshold)
+	{
+		LastCrouchPressTime = -1.0f;
+		StartGroundPound();
+		return;
+	}
+
+	LastCrouchPressTime = CurrentTime;
+
+	// Crouch Toggle
+	if (bIsCrouched)
+	{
+		UnCrouch();
+	}
+	else
+	{
+		Crouch();
+	}
 }
 
 void ABunny_Third_PersonCharacter::StartDash()
 {
-	if (bIsDashing || bDashOnCoolDown) return;
+	if (bIsDashing || bDashOnCoolDown || bIsGroundPounding) return;
 
 	if (bIsLedgeHanging)
 	{
@@ -539,6 +588,11 @@ void ABunny_Third_PersonCharacter::Landed(const FHitResult& Hit)
 {
 	Super::Landed(Hit);
 
+	if (bIsGroundPounding)
+	{
+		StopGroundPound();
+	}
+
 	bCanLedgeGrab = true;
 	GetWorldTimerManager().ClearTimer(LedgeCooldownTimerHandle);
 
@@ -553,6 +607,8 @@ void ABunny_Third_PersonCharacter::Landed(const FHitResult& Hit)
 
 void ABunny_Third_PersonCharacter::DoWallJumpLedge()
 {
+	if (bIsGroundPounding) return;
+
 	if (bCanWallJump || bIsWallSliding)
 	{
 		StopWallSlide();
@@ -573,6 +629,8 @@ void ABunny_Third_PersonCharacter::DoWallJumpLedge()
 
 void ABunny_Third_PersonCharacter::StartWallSlide(const FVector& HitNormal, UPrimitiveComponent* HitComponent)
 {
+	if (bIsGroundPounding) return;
+
 	bIsWallSliding = true;
 	bCanWallJump = true;
 	bIsWallStick = false;
@@ -655,7 +713,7 @@ bool ABunny_Third_PersonCharacter::IsPushingIntoWall() const
 
 void ABunny_Third_PersonCharacter::OnDashButtonPressed()
 {
-	if (bIsDashing) return;
+	if (bIsDashing || bIsGroundPounding) return;
 
 	//Set Timer
 	GetWorldTimerManager().SetTimer(
@@ -711,6 +769,8 @@ void ABunny_Third_PersonCharacter::DoAttack()
 // Trace to find the ledge
 bool ABunny_Third_PersonCharacter::DetectLedge(FVector& OutLedgeLoc, FVector& OutWallNormal, UPrimitiveComponent*& OutHitComponent)
 {
+	if (bIsGroundPounding) return false;
+
 	OutHitComponent = nullptr;
 	
 	FCollisionQueryParams TraceParams(FName(TEXT("LedgeTrace")), true, this );
@@ -767,6 +827,8 @@ bool ABunny_Third_PersonCharacter::DetectLedge(FVector& OutLedgeLoc, FVector& Ou
 void ABunny_Third_PersonCharacter::StartLedgeGrab(const FVector& InLedgeLoc, const FVector& InWallNormal,
 	UPrimitiveComponent* HitComponent)
 {
+	if (bIsGroundPounding) return;
+
 	bIsLedgeHanging = true;
 	LedgeLocation = InLedgeLoc;
 	LedgeWallNormal = InWallNormal;
@@ -998,4 +1060,92 @@ void ABunny_Third_PersonCharacter::UpdateMovingBaseMovement()
 	LedgeLocation = CurrentBaseTransform.TransformPosition(PreviousBaseTransform.InverseTransformPosition(LedgeLocation));
 
 	PreviousBaseTransform = CurrentBaseTransform;
+}
+
+void ABunny_Third_PersonCharacter::StartGroundPound()
+{
+	if  (bIsGroundPounding) return;
+
+	if (bIsLedgeHanging) DropFromLedge();
+	StopWallSlide();
+	if (bIsDashing) StopDash();
+	if (bIsCrouched) UnCrouch();
+
+	bIsGroundPounding = true;
+
+	GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+	GetCharacterMovement()->Velocity = FVector(0.0f, 0.0f, -GroundPoundSpeed);
+}
+
+void ABunny_Third_PersonCharacter::StopGroundPound()
+{
+	if (!bIsGroundPounding) return;
+
+	bIsGroundPounding = false;
+	GetCharacterMovement()->GravityScale = DefaultGravityScale;
+}
+
+void ABunny_Third_PersonCharacter::TickSlopeSlide(float DeltaTime)
+{
+	if (!bIsCrouched || !GetCharacterMovement()->IsMovingOnGround())
+	{
+		if (bIsSlopeSliding)
+		{
+			bIsSlopeSliding = false;
+			GetCharacterMovement()->BrakingDecelerationWalking = DefaultBrakingDecelWalking;
+		}
+		return;
+	}
+
+	const FFindFloorResult& CurrentFloor = GetCharacterMovement()->CurrentFloor;
+	if (!CurrentFloor.IsWalkableFloor())
+	{
+		bIsSlopeSliding = false;
+		return;
+	}
+
+	const FVector FloorNormal = CurrentFloor.HitResult.ImpactNormal;
+	const float SlopeAngle = FMath::RadiansToDegrees(FMath::Acos(FloorNormal.Z));
+
+	if (SlopeAngle >= MinSlopeSlideAngle)
+	{
+		bIsSlopeSliding = true;
+
+		// Find the downhill direction
+		const FVector DownVector = FVector(0.0f, 0.0f, -1.0f);
+		const FVector SlideDirection = FVector::VectorPlaneProject(DownVector, FloorNormal).GetSafeNormal();
+
+		// Remove ground friction 
+		GetCharacterMovement()->BrakingDecelerationWalking = 0.0f;
+
+		// Accelerate down the slope
+		FVector CurrentVelocity = GetCharacterMovement()->Velocity;
+		CurrentVelocity += SlideDirection * (SlopeSlideAcceleration * DeltaTime);
+		CurrentVelocity = CurrentVelocity.GetClampedToMaxSize(MaxSlopeSlideSpeed);
+		GetCharacterMovement()->Velocity = CurrentVelocity;
+
+		// Rotate facing down the slope
+		FRotator TargetRotation = SlideDirection.Rotation();
+		TargetRotation.Pitch = 0.0f;
+		TargetRotation.Roll = 0.0f;
+		SetActorRotation(FMath::RInterpTo(GetActorRotation(), TargetRotation, DeltaTime, 12.0f));
+	}
+	else
+	{
+		if (bIsSlopeSliding)
+		{
+			bIsSlopeSliding = false;
+			GetCharacterMovement()->BrakingDecelerationWalking = DefaultBrakingDecelWalking;
+		}
+	}
+}
+
+bool ABunny_Third_PersonCharacter::IsGroundPounding() const
+{
+	return bIsGroundPounding;
+}
+
+bool ABunny_Third_PersonCharacter::IsSlopeSliding() const
+{
+	return bIsSlopeSliding;
 }

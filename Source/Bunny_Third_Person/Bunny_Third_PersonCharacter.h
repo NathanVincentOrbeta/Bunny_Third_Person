@@ -219,6 +219,35 @@ protected:
 
 	bool DetectLedge(FVector& OutLedgeLoc, FVector& OutWallNormal, UPrimitiveComponent*& OutHitComponent);
 
+	/** Crouch & Ground Pound */
+	UPROPERTY(Editanywhere, BlueprintReadWrite, Category = "Crouch")
+	float DoubleTapCrouchThreshold = 0.28f;
+
+	float LastCrouchPressTime = -1.0f;
+
+	UPROPERTY(visibleAnywhere, BlueprintReadOnly, Category = "Ground Pound")
+	bool bIsGroundPounding = false;
+
+	UPROPERTY(Editanywhere, BlueprintReadWrite, Category = "Ground Pound")
+	float GroundPoundSpeed = 2600.0f;
+
+	/** Slope */
+	UPROPERTY(visibleAnywhere, BlueprintReadOnly, Category = "Slope Slide")
+	bool bIsSlopeSliding = false;
+
+	UPROPERTY(Editanywhere, BlueprintReadWrite, Category = "Slope Slide")
+	float MinSlopeSlideAngle = 10.0f;
+
+	UPROPERTY(Editanywhere, BlueprintReadWrite, Category = "Slope Slide")
+	float SlopeSlideAcceleration = 2200.0f;
+
+	UPROPERTY(Editanywhere, BlueprintReadWrite, Category = "Slope Slide")
+	float MaxSlopeSlideSpeed = 1600.0f;
+
+	float DefaultBrakingDecelWalking;
+
+	void TickSlopeSlide(float DeltaTime);
+
 public:
 
 	/** Handles move inputs from either controls or UI interfaces */
@@ -282,6 +311,17 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Ledge Grab")
 	bool IsLedgeHanging() const { return bIsLedgeHanging; }
+
+	/** Ground Handlers */
+	UFUNCTION(BlueprintCallable, Category = "Ground Pound")
+	void StartGroundPound();
+	void StopGroundPound();
+
+	UFUNCTION(BlueprintCallable, Category = "Ground Pound")
+	bool IsGroundPounding() const;
+
+	UFUNCTION(BlueprintCallable, Category = "Slope Slide")
+	bool IsSlopeSliding() const;
 
 public:
 
