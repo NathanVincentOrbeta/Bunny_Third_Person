@@ -13,6 +13,9 @@ public:
 	// Sets default values for this character's properties
 	ANpc();
 
+	UPROPERTY(EditAnywhere, Category = "AI|Patrol")
+	APatrolRoute* AssignedRoute;
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;

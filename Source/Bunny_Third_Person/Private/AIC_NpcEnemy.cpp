@@ -7,6 +7,7 @@
 #include "Perception/AIPerceptionTypes.h"
 #include "Bunny_Third_PersonCharacter.h"
 #include "Kismet/GameplayStatics.h"
+#include "PatrolRoute.h"
 
 AAIC_NpcEnemy::AAIC_NpcEnemy() {
 	PrimaryActorTick.bCanEverTick = true;
@@ -70,10 +71,22 @@ void AAIC_NpcEnemy::OnPossess(APawn* InPawn) {
 	if (PatrolBlackboard) {
 
 		UBlackboardComponent* TempBlackboard = nullptr;
-
 		UseBlackboard(PatrolBlackboard, TempBlackboard);
-
 		Blackboard = TempBlackboard;
+	}
+
+	if (Blackboard) {
+		// 1. Cast the InPawn to our ANpc class to access its variables
+		ANpc* MyNpc = Cast<ANpc>(InPawn);
+		if (MyNpc && MyNpc->AssignedRoute) {
+			// 2. Take the route from the NPC and put it into the Blackboard
+			Blackboard->SetValueAsObject(TEXT("PatrolRoute"), MyNpc->AssignedRoute);
+			Blackboard->SetValueAsInt(TEXT("CurrentWaypointIndex"), 0);
+			UE_LOG(LogTemp, Warning, TEXT("AI: Assigned to route %s"), *MyNpc->AssignedRoute->GetName());
+		}
+		else {
+			UE_LOG(LogTemp, Error, TEXT("AI: This NPC has no Assigned Route!"));
+		}
 	}
 
 	if (PatrolBehaviorTree) {

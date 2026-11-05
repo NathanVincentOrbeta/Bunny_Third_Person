@@ -11,6 +11,8 @@
  * 
  */
 
+class APatrolRoute;
+
 UENUM(BlueprintType)
 enum class EAIPerceptionMode : uint8 {
 
