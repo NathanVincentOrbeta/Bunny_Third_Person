@@ -6,8 +6,10 @@
 #include "Perception/AISenseConfig_Sight.h"
 #include "Perception/AIPerceptionTypes.h"
 #include "Bunny_Third_PersonCharacter.h"
+#include "Kismet/GameplayStatics.h"
 
 AAIC_NpcEnemy::AAIC_NpcEnemy() {
+	PrimaryActorTick.bCanEverTick = true;
 
 	PerceptionComp = CreateDefaultSubobject<UAIPerceptionComponent>(TEXT("PerceptionComp"));
 	SightConfig = CreateDefaultSubobject<UAISenseConfig_Sight>(TEXT("SightConfig"));
@@ -22,6 +24,43 @@ AAIC_NpcEnemy::AAIC_NpcEnemy() {
 
 	PerceptionComp->ConfigureSense(*SightConfig);
 	PerceptionComp->SetDominantSense(SightConfig->GetSenseImplementation());
+}
+
+void AAIC_NpcEnemy::SetPerceptionMode(EAIPerceptionMode NewMode) {
+
+	CurrentPerceptionMode = NewMode;
+
+	if (CurrentPerceptionMode == EAIPerceptionMode::Battle) {
+
+		UE_LOG(LogTemp, Warning, TEXT("AI: Switching to Battle Mode! Player location is now known."));
+	}
+	else {
+
+		UE_LOG(LogTemp, Warning, TEXT("AI: Switching to Patrol Mode. Relying on sight"));
+	}
+}
+
+void AAIC_NpcEnemy::Tick(float DeltaTime) {
+
+	Super::Tick(DeltaTime);
+
+	if (CurrentPerceptionMode == EAIPerceptionMode::Battle) {
+
+		if (Blackboard) {
+
+			AActor* PlayerActor = UGameplayStatics::GetPlayerPawn(GetWorld(), 0);
+
+			if (PlayerActor) {
+
+				Blackboard->SetValueAsObject(TEXT("TargetActor"), PlayerActor);
+
+				if (ANpc* MyNpc = Cast<ANpc>(GetPawn())) {
+
+					MyNpc->SetMovementSpeed(true);
+				}
+			}
+		}
+	}
 }
 
 void AAIC_NpcEnemy::OnPossess(APawn* InPawn) {
@@ -46,6 +85,9 @@ void AAIC_NpcEnemy::OnPossess(APawn* InPawn) {
 }
 
 void AAIC_NpcEnemy::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors) {
+
+	if(CurrentPerceptionMode == EAIPerceptionMode::Battle) return;
+
 	for (AActor* Actor : UpdatedActors) {
 		if (Actor && Actor->IsA(ABunny_Third_PersonCharacter::StaticClass())) {
 
