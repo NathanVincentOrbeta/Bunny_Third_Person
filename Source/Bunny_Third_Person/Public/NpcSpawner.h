@@ -6,6 +6,7 @@
 
 class ANpc;
 class APatrolRoute;
+class ASpawnManager;
 
 USTRUCT(BlueprintType)
 struct FNpcSpawnData {
@@ -35,8 +36,24 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
+	UPROPERTY(EditAnywhere, Category = "Setup")
+	ASpawnManager* SpawnManager;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawner")
 	TArray<FNpcSpawnData> NPCsToSpawn;
 
-	void SpawnNPCs();
+	UPROPERTY(EditAnywhere, Category = "Spawner")
+	float SpawnDelay = 3.0f;
+
+	UPROPERTY()
+	TArray<ANpc*> ActiveNPCs;
+
+	void TrySpawn();
+
+	void PerformSpawn();
+
+	UFUNCTION()
+	void HandleNpcDeath(ANpc* DeadNpc);
+
+	FTimerHandle SpawnTimerHandle;
 };

@@ -52,6 +52,8 @@ void ANpc::Die() {
 
 	UE_LOG(LogTemp, Error, TEXT("NPC has died!"));
 
+	OnNpcDeath.Broadcast(this);
+
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GetCharacterMovement()->DisableMovement();
 

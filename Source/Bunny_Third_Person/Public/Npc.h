@@ -4,6 +4,8 @@
 #include "GameFramework/Character.h"
 #include "Npc.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnNpcDeathSignature, ANpc*, DeadNpc);
+
 UCLASS()
 class BUNNY_THIRD_PERSON_API ANpc : public ACharacter
 {
@@ -15,6 +17,9 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "AI|Patrol")
 	APatrolRoute* AssignedRoute;
+
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+	FOnNpcDeathSignature OnNpcDeath;
 
 protected:
 	// Called when the game starts or when spawned
