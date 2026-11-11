@@ -16,11 +16,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Limits")
 	int32 MaxGlobalNPCs = 4;
 
+	UPROPERTY(BlueprintReadWrite, Category = "Limits")
+	bool bGlobalBattleMode = false;
+
 	UFUNCTION(BlueprintCallable, Category = "Limits")
 	bool RequestSpawn();
 
 	UFUNCTION(BlueprintCallable, Category = "Limits")
 	void NotifyDeath();
+
+	UFUNCTION(BlueprintCallable,Category = "Limits")
+	void SetGlobalBattleMode(bool bActive) { bGlobalBattleMode = bActive; }
 
 private:	
 	

@@ -8,6 +8,7 @@
 #include "Bunny_Third_PersonCharacter.h"
 #include "Kismet/GameplayStatics.h"
 #include "PatrolRoute.h"
+#include "SpawnManager.h"
 
 AAIC_NpcEnemy::AAIC_NpcEnemy() {
 	PrimaryActorTick.bCanEverTick = true;
@@ -95,6 +96,12 @@ void AAIC_NpcEnemy::OnPossess(APawn* InPawn) {
 	}
 
 	PerceptionComp->OnPerceptionUpdated.AddDynamic(this, &AAIC_NpcEnemy::OnPerceptionUpdated);
+
+	ASpawnManager* SpawnMgr = Cast<ASpawnManager>(UGameplayStatics::GetActorOfClass(GetWorld(), ASpawnManager::StaticClass()));
+	if (SpawnMgr && SpawnMgr->bGlobalBattleMode) {
+
+		SetPerceptionMode(EAIPerceptionMode::Battle);
+	}
 }
 
 void AAIC_NpcEnemy::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors) {
