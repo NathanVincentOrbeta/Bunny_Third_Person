@@ -20,26 +20,43 @@ EBTNodeResult::Type UBTTask_GetNextPatrolPoint::ExecuteTask(UBehaviorTreeCompone
 	}
 
 	int32 CurrentIndex = BBComp->GetValueAsInt(TEXT("CurrentWaypointIndex"));
-	int32 NextIndex = CurrentIndex + 1;
+	bool bIsMovingForward = BBComp->GetValueAsBool(TEXT("bIsMovingForward"));
+	int32 NextIndex = CurrentIndex;
 
 	if (Route->bPingPong) {
 
-		if (NextIndex >= Route->Waypoints.Num()) {
+		// Checks next index based on direction
+		NextIndex = bIsMovingForward ? CurrentIndex + 1 : CurrentIndex - 1;
 
-			NextIndex = 0;
+		// Checks if we are at the end of the list of points
+		if (NextIndex >= Route->Waypoints.Num()) {
+			bIsMovingForward = false;
+			NextIndex = Route->Waypoints.Num() - 2;
 		}
+		// Checks if we are at the start of the list of points
+		else if (NextIndex < 0) {
+			bIsMovingForward = true;
+			NextIndex = 1;
+		}
+
+		// If there is only 1 point
+		if (Route->Waypoints.Num() <= 1) NextIndex = 0;
 	}
 	else {
 
+		NextIndex = (CurrentIndex + 1);
 		if (NextIndex >= Route->Waypoints.Num()) {
 
 			NextIndex = 0;
 		}
 	}
+
+	NextIndex = FMath::Clamp(NextIndex, 0, Route->Waypoints.Num() - 1);
 
 	FVector TargetLoc = Route->Waypoints[NextIndex]->GetActorLocation();
 	BBComp->SetValueAsVector(TEXT("TargetLocation"), TargetLoc);
 	BBComp->SetValueAsInt(TEXT("CurrentWaypointIndex"), NextIndex);
+	BBComp->SetValueAsBool(TEXT("bIsMovingForward"), bIsMovingForward);
 
 	return EBTNodeResult::Succeeded;
 }
