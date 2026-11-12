@@ -16,6 +16,23 @@ EBTNodeResult::Type UBTTask_MeleeAttack::ExecuteTask(UBehaviorTreeComponent& Own
 	if (!AIController) return EBTNodeResult::Failed;
 
 	ANpc* MyNpc = Cast<ANpc>(AIController->GetPawn());
+	UBlackboardComponent* BBComp = OwnerComp.GetBlackboardComponent();
+
+	if (MyNpc && BBComp && MyNpc->NPCCombatComp) {
+
+		AActor* Target = Cast<AActor>(BBComp->GetValueAsObject(TEXT("TargetActor")));
+		if (Target) {
+
+			float Distance = FVector::Dist(MyNpc->GetActorLocation(), Target->GetActorLocation());
+
+			// Distance check
+			if (Distance > MyNpc->NPCCombatComp->AttackRange + 50.0f) {
+
+				return EBTNodeResult::Failed;
+			}
+		}
+	}
+
 	if (MyNpc && MyNpc->NPCCombatComp) {
 
 		MyNpc->NPCCombatComp->Attack();

@@ -13,10 +13,9 @@ public:
 	// Default Values
 	UCombatComponent();
 
-	UFUNCTION(BlueprintCallable, Category = "Combat")
-	void Attack();
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+	float AttackRange = 150.0f;
 
-protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
 	UAnimMontage* AttackMontage;
 
@@ -24,11 +23,12 @@ protected:
 	float AttackCooldown = 0.6f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
-	float AttackRange = 150.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
 	float AttackRadius = 50.0f;
 
+	UFUNCTION(BlueprintCallable, Category = "Combat")
+	void Attack();
+
+protected:
 	bool bIsAttacking = false;
 	FTimerHandle CooldownTimerHandle;
 

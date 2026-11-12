@@ -9,27 +9,35 @@ UBTTask_RangedAttack::UBTTask_RangedAttack() {
 }
 
 EBTNodeResult::Type UBTTask_RangedAttack::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory) {
+
 	AAIController* AIController = Cast<AAIController>(OwnerComp.GetOwner());
 	if (!AIController) return EBTNodeResult::Failed;
 
+	// Get Blackboard and Target
+	UBlackboardComponent* BBComp = OwnerComp.GetBlackboardComponent();
+	if (!BBComp) return EBTNodeResult::Failed;
+
+	AActor* TargetActor = Cast<AActor>(BBComp->GetValueAsObject(TEXT("TargetActor")));
+	if (!TargetActor) return EBTNodeResult::Failed;
+
+	// Line of Sight Check
+	if (!AIController->LineOfSightTo(TargetActor)) {
+		return EBTNodeResult::Failed;
+	}
+
+	// Get NPC and Combat Component
 	ANpc* MyNpc = Cast<ANpc>(AIController->GetPawn());
 	if (!MyNpc || !MyNpc->NPCCombatComp) return EBTNodeResult::Failed;
 
-	UBlackboardComponent* BBComp = OwnerComp.GetBlackboardComponent();
-	if (BBComp)
-	{
-		if (AActor* TargetActor = Cast<AActor>(BBComp->GetValueAsObject(TEXT("TargetActor"))))
-		{
-			FVector DirectionToTarget = TargetActor->GetActorLocation() - MyNpc->GetActorLocation();
-			DirectionToTarget.Z = 0.0f;
+	// Rotate to face target
+	FVector DirectionToTarget = TargetActor->GetActorLocation() - MyNpc->GetActorLocation();
+	DirectionToTarget.Z = 0.0f;
 
-			if (!DirectionToTarget.IsNearlyZero())
-			{
-				MyNpc->SetActorRotation(DirectionToTarget.Rotation());
-			}
-		}
+	if (!DirectionToTarget.IsNearlyZero()) {
+		MyNpc->SetActorRotation(DirectionToTarget.Rotation());
 	}
 
+	// Attack
 	MyNpc->NPCCombatComp->Attack();
 	return EBTNodeResult::Succeeded;
 }

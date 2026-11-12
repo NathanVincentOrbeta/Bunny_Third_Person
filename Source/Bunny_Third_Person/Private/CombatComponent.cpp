@@ -46,12 +46,12 @@ void UCombatComponent::PerformAttackTrace() {
 		Start,
 		End,
 		FQuat::Identity,
-		ECC_Pawn,
+		ECC_Visibility,
 		FCollisionShape::MakeSphere(AttackRadius),
 		Params
 	);
 
-	if (bHit && HitResult.GetActor()) {
+	if (bHit && HitResult.GetActor() && HitResult.GetActor()->IsA(APawn::StaticClass())) {
 
 		AActor* HitActor = HitResult.GetActor();
 

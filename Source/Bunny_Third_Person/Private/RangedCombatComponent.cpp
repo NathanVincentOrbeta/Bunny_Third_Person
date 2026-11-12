@@ -5,8 +5,8 @@
 #include "AIController.h"
 #include "BehaviorTree/BlackboardComponent.h"
 
-void URangedCombatComponent::PerformAttackTrace()
-{
+void URangedCombatComponent::PerformAttackTrace() {
+
 	AActor* Owner = GetOwner();
 	if (!Owner) return;
 
@@ -15,8 +15,8 @@ void URangedCombatComponent::PerformAttackTrace()
 	FVector ShootDirection = Owner->GetActorForwardVector();
 
 	// If the owner is an AI, aim directly at the TargetActor
-	if (APawn* OwnerPawn = Cast<APawn>(Owner))
-	{
+	if (APawn* OwnerPawn = Cast<APawn>(Owner)) {
+
 		if (AAIController* AIController = Cast<AAIController>(OwnerPawn->GetController()))
 		{
 			if (UBlackboardComponent* BBComp = AIController->GetBlackboardComponent())
@@ -50,13 +50,13 @@ void URangedCombatComponent::PerformAttackTrace()
 		HitResult,
 		Start,
 		End,
-		ECC_Pawn,
+		ECC_Visibility,
 		Params
 	);
 
 	// Draw Debug Visuals
-	if (bShowDebugTrace)
-	{
+	if (bShowDebugTrace) {
+
 		FVector TraceEnd = bHit ? HitResult.ImpactPoint : End;
 		FColor LineColor = bHit ? FColor::Red : FColor::Green;
 
@@ -68,8 +68,8 @@ void URangedCombatComponent::PerformAttackTrace()
 		}
 	}
 
-	if (bHit && HitResult.GetActor())
-	{
+	if (bHit && HitResult.GetActor() && HitResult.GetActor()->IsA(APawn::StaticClass())) {
+
 		AActor* HitActor = HitResult.GetActor();
 		UE_LOG(LogTemp, Log, TEXT("Ranged Attack Hit: %s"), *HitActor->GetName());
 
