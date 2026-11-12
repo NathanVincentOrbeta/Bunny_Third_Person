@@ -15,6 +15,15 @@ ANpc::ANpc()
 	GetCharacterMovement()->BrakingDecelerationWalking = 1000.0f;
 
 	AIControllerClass = AAIC_NpcEnemy::StaticClass();
+
+	// Avoids collision issues with the player when they are close together. Apparently called RVO Avoidance.
+	GetCharacterMovement()->bUseRVOAvoidance = true;
+	GetCharacterMovement()->AvoidanceConsiderationRadius = 50.0f;
+
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
 }
 
 // Called when the game starts or when spawned
