@@ -12,6 +12,8 @@
 #include "Bunny_Third_Person.h"
 #include "BP_ObjectGrab.h"
 #include "CombatComponent.h"
+#include "Interactable/RopeActor.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 ABunny_Third_PersonCharacter::ABunny_Third_PersonCharacter()
 {

@@ -5,6 +5,7 @@
 #include "Logging/LogMacros.h"
 #include "Bunny_Third_PersonCharacter.generated.h"
 
+class ARopeActor; 
 class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
@@ -47,6 +48,13 @@ public:
 	FORCEINLINE USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
 	FORCEINLINE UCameraComponent* GetFollowCamera() const { return FollowCamera; }
 	FORCEINLINE USceneComponent* GetHoldPoint() const { return HoldPoint; }
+
+	// ~ Helper for Rope
+	UFUNCTION(BlueprintPure, Category = "Movement")
+	bool IsRopeHanging() const { return bIsAttachedToRope; }
+
+	UFUNCTION(BlueprintPure, Category = "Movement|Rope")
+	FVector2D GetRopeMoveInput() const { return CurrentMoveInput; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -227,6 +235,53 @@ protected:
 	float ObjectDownImpulse = 500.0f;
 
 	// -------------------------------------------------------------------------
+	// Rope Locomotion & Swinging
+	// -------------------------------------------------------------------------
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Rope")
+	bool bIsAttachedToRope = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
+	bool bIsInRopeArea = true; 
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Rope")
+	FName RopeHitBoneName;
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Movement|Rope")
+	ARopeActor* AttachedRopeActor = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
+	FName RopeHandSocket = TEXT("right_hand");
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
+	float RopeTraceSocket = 35.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
+	float RopeTraceDuration = 1.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
+	float RopeSwingForceMultiplier = 35000.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
+	FName RopeSwingBone = TEXT("Bone_018");
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
+	FName RopeImpulseBone = TEXT("Bone_084");
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
+	FRotator RopeMeshRelativeRotation = FRotator(90.0f, 0.0f, 90.0f);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
+	FVector RopeMeshRelativeOffset = FVector(0.0f, 0.0f, -50.0f);
+
+	void StartRopeTrace();
+	void TickRopeTrace();
+	void StopRopeTrace();
+
+	void AttachToRope(ARopeActor* InRope, FName InBoneName);
+	void DetachFromRope();
+	void TickRopeSwing(float DeltaTime);
+
+	// -------------------------------------------------------------------------
 	// Input Callbacks & Movement Functions
 	// -------------------------------------------------------------------------
 	UFUNCTION(BlueprintCallable, Category = "Movement|Input")
@@ -296,6 +351,12 @@ private:
 
 	void ResetDashCooldown();
 	void ResetLedgeGrabCooldown();
+
+	// Rope private 
+	FTimerHandle RopeTraceTimerHandle;
+	float RopeTraceElapsed = 0.0f;
+	FVector DefaultMeshRelativeLocation;
+	FRotator DefaultMeshRelativeRotation;
 
 	// Internal state tracking
 	FVector2D CurrentMoveInput = FVector2D::ZeroVector;
