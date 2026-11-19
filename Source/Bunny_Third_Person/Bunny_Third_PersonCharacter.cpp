@@ -65,11 +65,24 @@ void ABunny_Third_PersonCharacter::BeginPlay()
 	DefaultGravityScale = GetCharacterMovement()->GravityScale;
 	DefaultBrakingDecelWalking = GetCharacterMovement()->BrakingDecelerationWalking;
 	bCanAirDash = true;
+
+	if (GetMesh()) 
+	{
+		DefaultMeshRelativeLocation = GetMesh()->GetRelativeLocation();
+		DefaultMeshRelativeRotation = GetMesh()->GetRelativeRotation();
+	}
 }
 
 void ABunny_Third_PersonCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	// 0. Rope Swinging
+	if (bIsAttachedToRope) 
+	{
+		TickRopeSwing(DeltaTime);
+		return;
+	}
 
 	// 1. Ground Pound
 	if (bIsGroundPounding)
@@ -210,7 +223,7 @@ void ABunny_Third_PersonCharacter::Move(const FInputActionValue& Value)
 {
 	CurrentMoveInput = Value.Get<FVector2D>();
 
-	if (bIsDashing || bIsGroundPounding) return;
+	if (bIsDashing || bIsGroundPounding || bIsAttachedToRope) return;
 
 	if (bIsLedgeHanging)
 	{
@@ -263,6 +276,13 @@ void ABunny_Third_PersonCharacter::DoJumpStart()
 {
 	if (bIsGroundPounding) return;
 
+	// 0. Detach Rope
+	if (bIsAttachedToRope)
+	{
+		DetachFromRope();
+		return;
+	}
+	
 	if (bIsCrouched)
 	{
 		UnCrouch();
@@ -292,6 +312,11 @@ void ABunny_Third_PersonCharacter::DoJumpStart()
 	if (CanJump())
 	{
 		Jump();
+
+		if (bIsInRopeArea)
+		{
+			StartRopeTrace();
+		}
 		return;
 	}
 
@@ -475,6 +500,7 @@ void ABunny_Third_PersonCharacter::StartDash()
 {
 	if (bIsDashing || bDashOnCoolDown || bIsGroundPounding) return;
 
+	if (bIsAttachedToRope) DetachFromRope();
 	if (bIsLedgeHanging) DropFromLedge();
 	StopWallSlide();
 
@@ -572,6 +598,9 @@ void ABunny_Third_PersonCharacter::ResetDashCooldown()
 void ABunny_Third_PersonCharacter::Landed(const FHitResult& Hit)
 {
 	Super::Landed(Hit);
+
+	if (bIsAttachedToRope) DetachFromRope();
+	StopRopeTrace();
 
 	if (bIsGroundPounding) StopGroundPound();
 	if (bIsLedgeHanging)   DropFromLedge();
@@ -943,4 +972,120 @@ void ABunny_Third_PersonCharacter::DoAttack()
 	{
 		CombatComp->Attack();
 	}
+}
+
+// -----------------------------------------------------------------------------
+// Rope Mechanics
+// -----------------------------------------------------------------------------
+void ABunny_Third_PersonCharacter::StartRopeTrace() 
+{
+	RopeTraceElapsed = 0.0f;
+	GetWorldTimerManager().SetTimer(RopeTraceTimerHandle, this, 
+		&ABunny_Third_PersonCharacter::TickRopeTrace, 0.016f, true);
+}
+
+void ABunny_Third_PersonCharacter::TickRopeTrace()
+{
+	RopeTraceElapsed += 0.016f; 
+	if (RopeTraceElapsed >= RopeTraceDuration)
+	{
+		StopRopeTrace();
+		return;
+	}
+
+	const FVector HandLocation = GetMesh()->GetSocketLocation(RopeHandSocket);
+
+	TArray<AActor*> ActorsToIgnore; 
+	ActorsToIgnore.Add(this);
+	if (HeldGrabObject)
+	{
+		ActorsToIgnore.Add(HeldGrabObject);
+	}
+
+	FHitResult HitResult;
+	const bool bHit = UKismetSystemLibrary::SphereTraceSingle(
+		this,
+		HandLocation,
+		HandLocation,
+		RopeTraceRadius,
+		UEngineTypes::ConvertToTraceType(ECC_Visibility),
+		false,
+		ActorsToIgnore,
+		EDrawDebugTrace::None,
+		HitResult,
+		true
+	);
+
+	if (bHit && HitResult.GetActor())
+	{
+		if (ARopeActor* HitRope = Cast<ARopeActor>(HitResult.GetActor()))
+		{
+			StopRopeTrace();
+			AttachToRope(HitRope, HitResult.BoneName);
+		}
+	}
+}
+
+void ABunny_Third_PersonCharacter::StopRopeTrace()
+{
+	GetWorldTimerManager().ClearTimer(RopeTraceTimerHandle);
+}
+
+void ABunny_Third_PersonCharacter::AttachToRope(ARopeActor* InRope, FName InBoneName)
+{
+	if (!InRope) return;
+
+	AttachedRopeActor = InRope;
+	RopeHitBoneName = InBoneName;
+
+	if (InRope->RopeMesh)
+	{
+		const FVector Impulse = GetCharacterMovement()->Velocity * 22.0f;
+		InRope->RopeMesh->AddImpulse(Impulse, RopeImpulseBone, true);
+	}
+
+	GetCharacterMovement()->SetMovementMode(MOVE_Flying);
+	GetCharacterMovement()->StopMovementImmediately();
+	GetCharacterMovement()->GravityScale = 0.0f;
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	AttachToActor(InRope, FAttachmentTransformRules::SnapToTargetNotIncludingScale, InBoneName);
+
+	GetMesh()->AddLocalRotation(RopeMeshRelativeRotation);
+	GetMesh()->AddLocalOffset(RopeMeshRelativeOffset);
+
+	bIsAttachedToRope = true;
+}
+
+void ABunny_Third_PersonCharacter::DetachFromRope() 
+{
+	if (!bIsAttachedToRope) return;
+
+	bIsAttachedToRope = false;
+
+	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	GetCharacterMovement()->SetMovementMode(MOVE_Falling);
+	GetCharacterMovement()->GravityScale = DefaultGravityScale;
+
+	GetMesh()->SetRelativeLocation(DefaultMeshRelativeLocation);
+	GetMesh()->SetRelativeRotation(DefaultMeshRelativeRotation);
+
+	AttachedRopeActor = nullptr;
+	RopeHitBoneName = NAME_None; 
+}
+
+void ABunny_Third_PersonCharacter::TickRopeSwing(float DeltaTime)
+{
+	if (!AttachedRopeActor || !AttachedRopeActor->RopeMesh || CurrentMoveInput.IsNearlyZero())
+	{
+		return;
+	}
+
+	FVector ForceVector = FVector::ZeroVector;
+	ForceVector.X = CurrentMoveInput.X * RopeSwingForceMultiplier;
+	ForceVector.Y = CurrentMoveInput.Y * RopeSwingForceMultiplier;
+
+	AttachedRopeActor->RopeMesh->AddForce(ForceVector, RopeSwingBone, true);
 }

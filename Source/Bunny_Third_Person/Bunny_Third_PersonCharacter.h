@@ -253,7 +253,7 @@ protected:
 	FName RopeHandSocket = TEXT("right_hand");
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
-	float RopeTraceSocket = 35.0f;
+	float RopeTraceRadius = 35.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
 	float RopeTraceDuration = 1.0f;
