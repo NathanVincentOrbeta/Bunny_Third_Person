@@ -19,7 +19,7 @@ public:
 	USkeletalMeshComponent* RopeMesh;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Rope");
-	FName PhysicsStartBone = TEXT("Bone_120");
+	FName PhysicsStartBone = TEXT("Bone_117");
 
 protected:
 	// Called when the game starts or when spawned

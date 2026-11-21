@@ -5,7 +5,7 @@
 #include "Logging/LogMacros.h"
 #include "Bunny_Third_PersonCharacter.generated.h"
 
-class ARopeActor; 
+class ARopeActor;
 class USpringArmComponent;
 class UCameraComponent;
 class UInputAction;
@@ -15,12 +15,8 @@ struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
-/**
- *  A simple player-controllable third person character
- *  Implements a controllable orbiting camera
- */
 UCLASS(abstract)
-class ABunny_Third_PersonCharacter : public ACharacter
+class BUNNY_THIRD_PERSON_API ABunny_Third_PersonCharacter : public ACharacter
 {
 	GENERATED_BODY()
 
@@ -92,6 +88,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* GrabAction;
+
+	UPROPERTY(EditAnywhere, Category = "Input")
+	UInputAction* InteractAction; // <--- Interact input action
 
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* DashAction;
@@ -241,7 +240,7 @@ protected:
 	bool bIsAttachedToRope = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
-	bool bIsInRopeArea = true; 
+	bool bIsInRopeArea = true;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Rope")
 	FName RopeHitBoneName;
@@ -250,10 +249,10 @@ protected:
 	ARopeActor* AttachedRopeActor = nullptr;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
-	FName RopeHandSocket = TEXT("right_hand");
+	float RopeTraceRadius = 75.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
-	float RopeTraceRadius = 35.0f;
+	float RopeInteractDistance = 100.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
 	float RopeTraceDuration = 1.0f;
@@ -268,7 +267,7 @@ protected:
 	FName RopeImpulseBone = TEXT("Bone_084");
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
-	FRotator RopeMeshRelativeRotation = FRotator(90.0f, 0.0f, 90.0f);
+	FRotator RopeMeshRelativeRotation = FRotator(0.0f, 0.0f, 0.0f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
 	FVector RopeMeshRelativeOffset = FVector(0.0f, 0.0f, -50.0f);
@@ -305,6 +304,9 @@ protected:
 	UFUNCTION(BlueprintCallable, Category = "Movement|Input")
 	virtual void DoGrab();
 
+	UFUNCTION(BlueprintCallable, Category = "Movement|Input")
+	virtual void DoInteract(); // <--- Interact callback
+
 	UFUNCTION(BlueprintCallable, Category = "Combat")
 	virtual void DoAttack();
 
@@ -319,8 +321,6 @@ protected:
 
 	UFUNCTION(BlueprintCallable, Category = "Movement|Ground Pound")
 	void StopGroundPound();
-
-
 
 	void StartSprint();
 	void StopSprint();

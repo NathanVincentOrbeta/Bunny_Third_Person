@@ -208,12 +208,16 @@ void ABunny_Third_PersonCharacter::SetupPlayerInputComponent(UInputComponent* Pl
 
 	EnhancedInputComponent->BindAction(GrabAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoGrab);
 
+	EnhancedInputComponent->BindAction(InteractAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoInteract);
+
 	EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::OnDashButtonPressed);
 	EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Completed, this, &ABunny_Third_PersonCharacter::OnDashButtonReleased);
 	EnhancedInputComponent->BindAction(DashAction, ETriggerEvent::Canceled, this, &ABunny_Third_PersonCharacter::OnDashButtonReleased);
 
 	EnhancedInputComponent->BindAction(AttackAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoAttack);
 	EnhancedInputComponent->BindAction(CrouchAction, ETriggerEvent::Started, this, &ABunny_Third_PersonCharacter::DoCrouch);
+
+
 }
 
 // -----------------------------------------------------------------------------
@@ -276,13 +280,20 @@ void ABunny_Third_PersonCharacter::DoJumpStart()
 {
 	if (bIsGroundPounding) return;
 
-	// 0. Detach Rope
+	// 0. Detach from Rope with jump boost and preserved momentum
 	if (bIsAttachedToRope)
 	{
+		FVector SwingVelocity = FVector::ZeroVector;
+		if (AttachedRopeActor && AttachedRopeActor->RopeMesh && RopeHitBoneName != NAME_None)
+		{
+			SwingVelocity = AttachedRopeActor->RopeMesh->GetPhysicsLinearVelocity(RopeHitBoneName);
+		}
+
 		DetachFromRope();
+		LaunchCharacter(SwingVelocity + FVector(0.0f, 0.0f, GetCharacterMovement()->JumpZVelocity), true, true);
 		return;
 	}
-	
+
 	if (bIsCrouched)
 	{
 		UnCrouch();
@@ -312,11 +323,10 @@ void ABunny_Third_PersonCharacter::DoJumpStart()
 	if (CanJump())
 	{
 		Jump();
-
 		return;
 	}
 
-	// 4. Object-Assisted Jump (Mid-air boost by throwing held object downwards)
+	// 4. Object-Assisted Jump
 	if (HeldGrabObject && GetCharacterMovement()->IsFalling())
 	{
 		const float CapsuleHalfHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
@@ -384,8 +394,19 @@ bool ABunny_Third_PersonCharacter::TryWallJump()
 }
 
 // -----------------------------------------------------------------------------
-// Object Grab
+// Object Grab & Interact
 // -----------------------------------------------------------------------------
+void ABunny_Third_PersonCharacter::DoInteract()
+{
+	if (bIsAttachedToRope)
+	{
+		DetachFromRope();
+		return;
+	}
+
+	TryGrabRope();
+}
+
 void ABunny_Third_PersonCharacter::DoGrab()
 {
 	if (bIsAttachedToRope)
@@ -991,7 +1012,9 @@ bool ABunny_Third_PersonCharacter::TryGrabRope()
 		return false;
 	}
 
-	const FVector TraceCenter = GetMesh() ? GetMesh()->GetSocketLocation(RopeHandSocket) : GetActorLocation();
+	// 1. Sphere sweep from player location forward to detect rope
+	const FVector TraceStart = GetActorLocation();
+	const FVector TraceEnd = TraceStart + (GetActorForwardVector() * RopeInteractDistance);
 
 	TArray<AActor*> ActorsToIgnore;
 	ActorsToIgnore.Add(this);
@@ -1001,11 +1024,11 @@ bool ABunny_Third_PersonCharacter::TryGrabRope()
 	}
 
 	FHitResult HitResult;
-	const bool bHit = UKismetSystemLibrary::SphereTraceSingle(
+	bool bHit = UKismetSystemLibrary::SphereTraceSingle(
 		this,
-		TraceCenter,
-		TraceCenter,
-		RopeTraceRadius, 
+		TraceStart,
+		TraceEnd,
+		RopeTraceRadius,
 		UEngineTypes::ConvertToTraceType(ECC_Visibility),
 		false,
 		ActorsToIgnore,
@@ -1023,55 +1046,40 @@ bool ABunny_Third_PersonCharacter::TryGrabRope()
 		}
 	}
 
+	// 2. Fallback check: Overlapping rope actor (if capsule is already intersecting the rope)
+	TArray<AActor*> OverlappingActors;
+	GetCapsuleComponent()->GetOverlappingActors(OverlappingActors, ARopeActor::StaticClass());
+	if (OverlappingActors.Num() > 0)
+	{
+		if (ARopeActor* OverlapRope = Cast<ARopeActor>(OverlappingActors[0]))
+		{
+			AttachToRope(OverlapRope, NAME_None);
+			return true;
+		}
+	}
+
 	return false;
 }
 
-void ABunny_Third_PersonCharacter::StartRopeTrace() 
+void ABunny_Third_PersonCharacter::StartRopeTrace()
 {
 	RopeTraceElapsed = 0.0f;
-	GetWorldTimerManager().SetTimer(RopeTraceTimerHandle, this, 
+	GetWorldTimerManager().SetTimer(RopeTraceTimerHandle, this,
 		&ABunny_Third_PersonCharacter::TickRopeTrace, 0.016f, true);
 }
 
 void ABunny_Third_PersonCharacter::TickRopeTrace()
 {
-	RopeTraceElapsed += 0.016f; 
+	RopeTraceElapsed += 0.016f;
 	if (RopeTraceElapsed >= RopeTraceDuration)
 	{
 		StopRopeTrace();
 		return;
 	}
 
-	const FVector HandLocation = GetMesh()->GetSocketLocation(RopeHandSocket);
-
-	TArray<AActor*> ActorsToIgnore; 
-	ActorsToIgnore.Add(this);
-	if (HeldGrabObject)
+	if (TryGrabRope())
 	{
-		ActorsToIgnore.Add(HeldGrabObject);
-	}
-
-	FHitResult HitResult;
-	const bool bHit = UKismetSystemLibrary::SphereTraceSingle(
-		this,
-		HandLocation,
-		HandLocation,
-		RopeTraceRadius,
-		UEngineTypes::ConvertToTraceType(ECC_Visibility),
-		false,
-		ActorsToIgnore,
-		EDrawDebugTrace::None,
-		HitResult,
-		true
-	);
-
-	if (bHit && HitResult.GetActor())
-	{
-		if (ARopeActor* HitRope = Cast<ARopeActor>(HitResult.GetActor()))
-		{
-			StopRopeTrace();
-			AttachToRope(HitRope, HitResult.BoneName);
-		}
+		StopRopeTrace();
 	}
 }
 
@@ -1082,23 +1090,28 @@ void ABunny_Third_PersonCharacter::StopRopeTrace()
 
 void ABunny_Third_PersonCharacter::AttachToRope(ARopeActor* InRope, FName InBoneName)
 {
-	if (!InRope) return;
+	if (!InRope || !InRope->RopeMesh) return;
 
 	AttachedRopeActor = InRope;
+
+	// Resolve bone name to the closest one if none was detected
+	if (InBoneName.IsNone())
+	{
+		InBoneName = InRope->RopeMesh->FindClosestBone(GetActorLocation());
+	}
 	RopeHitBoneName = InBoneName;
 
-	if (InRope->RopeMesh)
-	{
-		const FVector Impulse = GetCharacterMovement()->Velocity * 22.0f;
-		InRope->RopeMesh->AddImpulse(Impulse, RopeImpulseBone, true);
-	}
+	// Add impulse from character's entrance velocity
+	const FVector Impulse = GetCharacterMovement()->Velocity * 22.0f;
+	InRope->RopeMesh->AddImpulse(Impulse, RopeImpulseBone, true);
 
 	GetCharacterMovement()->SetMovementMode(MOVE_Flying);
 	GetCharacterMovement()->StopMovementImmediately();
 	GetCharacterMovement()->GravityScale = 0.0f;
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-	AttachToActor(InRope, FAttachmentTransformRules::SnapToTargetNotIncludingScale, InBoneName);
+	// Attach directly to the SkeletalMesh component at the specific bone
+	AttachToComponent(InRope->RopeMesh, FAttachmentTransformRules::SnapToTargetNotIncludingScale, RopeHitBoneName);
 
 	GetMesh()->AddLocalRotation(RopeMeshRelativeRotation);
 	GetMesh()->AddLocalOffset(RopeMeshRelativeOffset);
@@ -1106,23 +1119,31 @@ void ABunny_Third_PersonCharacter::AttachToRope(ARopeActor* InRope, FName InBone
 	bIsAttachedToRope = true;
 }
 
-void ABunny_Third_PersonCharacter::DetachFromRope() 
+void ABunny_Third_PersonCharacter::DetachFromRope()
 {
 	if (!bIsAttachedToRope) return;
 
 	bIsAttachedToRope = false;
+
+	// Inherit swinging linear velocity from rope mesh
+	FVector ExitVelocity = FVector::ZeroVector;
+	if (AttachedRopeActor && AttachedRopeActor->RopeMesh && RopeHitBoneName != NAME_None)
+	{
+		ExitVelocity = AttachedRopeActor->RopeMesh->GetPhysicsLinearVelocity(RopeHitBoneName);
+	}
 
 	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
 
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	GetCharacterMovement()->SetMovementMode(MOVE_Falling);
 	GetCharacterMovement()->GravityScale = DefaultGravityScale;
+	GetCharacterMovement()->Velocity = ExitVelocity;
 
 	GetMesh()->SetRelativeLocation(DefaultMeshRelativeLocation);
 	GetMesh()->SetRelativeRotation(DefaultMeshRelativeRotation);
 
 	AttachedRopeActor = nullptr;
-	RopeHitBoneName = NAME_None; 
+	RopeHitBoneName = NAME_None;
 }
 
 void ABunny_Third_PersonCharacter::TickRopeSwing(float DeltaTime)
@@ -1133,8 +1154,21 @@ void ABunny_Third_PersonCharacter::TickRopeSwing(float DeltaTime)
 	}
 
 	FVector ForceVector = FVector::ZeroVector;
-	ForceVector.X = CurrentMoveInput.X * RopeSwingForceMultiplier;
-	ForceVector.Y = CurrentMoveInput.Y * RopeSwingForceMultiplier;
+
+	// Orient swing force relative to player's camera direction
+	if (Controller)
+	{
+		const FRotator YawRotation(0.f, Controller->GetControlRotation().Yaw, 0.f);
+		const FVector CamForward = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
+		const FVector CamRight = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
+
+		ForceVector = (CamForward * CurrentMoveInput.Y + CamRight * CurrentMoveInput.X) * RopeSwingForceMultiplier;
+	}
+	else
+	{
+		ForceVector.X = CurrentMoveInput.X * RopeSwingForceMultiplier;
+		ForceVector.Y = CurrentMoveInput.Y * RopeSwingForceMultiplier;
+	}
 
 	AttachedRopeActor->RopeMesh->AddForce(ForceVector, RopeSwingBone, true);
 }
