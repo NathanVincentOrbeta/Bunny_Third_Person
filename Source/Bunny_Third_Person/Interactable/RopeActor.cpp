@@ -8,8 +8,19 @@ ARopeActor::ARopeActor()
 {
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = false;
+
+	USceneComponent* AnchorComponent = CreateDefaultSubobject<USceneComponent>(TEXT("RopeAnchor"));
+	RootComponent = AnchorComponent;
+
 	RopeMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("RopeMesh"));
-	RootComponent = RopeMesh;
+	RopeMesh->SetupAttachment(RootComponent);
+
+	RopeMesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	RopeMesh->SetCollisionObjectType(ECC_PhysicsBody);
+	RopeMesh->SetCollisionResponseToAllChannels(ECR_Block);
+	RopeMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	RopeMesh->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	RopeMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 }
 
 // Called when the game starts or when spawned

@@ -273,6 +273,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Rope")
 	FVector RopeMeshRelativeOffset = FVector(0.0f, 0.0f, -50.0f);
 
+	UFUNCTION(BlueprintCallable, Category = "Movement|Rope")
+	bool TryGrabRope();
+
 	void StartRopeTrace();
 	void TickRopeTrace();
 	void StopRopeTrace();
@@ -316,6 +319,8 @@ protected:
 
 	UFUNCTION(BlueprintCallable, Category = "Movement|Ground Pound")
 	void StopGroundPound();
+
+
 
 	void StartSprint();
 	void StopSprint();

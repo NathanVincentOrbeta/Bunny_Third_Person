@@ -313,10 +313,6 @@ void ABunny_Third_PersonCharacter::DoJumpStart()
 	{
 		Jump();
 
-		if (bIsInRopeArea)
-		{
-			StartRopeTrace();
-		}
 		return;
 	}
 
@@ -392,6 +388,17 @@ bool ABunny_Third_PersonCharacter::TryWallJump()
 // -----------------------------------------------------------------------------
 void ABunny_Third_PersonCharacter::DoGrab()
 {
+	if (bIsAttachedToRope)
+	{
+		DetachFromRope();
+		return;
+	}
+
+	if (TryGrabRope())
+	{
+		return;
+	}
+
 	if (HeldGrabObject)
 	{
 		HeldGrabObject->DropObject();
@@ -977,6 +984,48 @@ void ABunny_Third_PersonCharacter::DoAttack()
 // -----------------------------------------------------------------------------
 // Rope Mechanics
 // -----------------------------------------------------------------------------
+bool ABunny_Third_PersonCharacter::TryGrabRope()
+{
+	if (bIsAttachedToRope || bIsGroundPounding || bIsDashing)
+	{
+		return false;
+	}
+
+	const FVector TraceCenter = GetMesh() ? GetMesh()->GetSocketLocation(RopeHandSocket) : GetActorLocation();
+
+	TArray<AActor*> ActorsToIgnore;
+	ActorsToIgnore.Add(this);
+	if (HeldGrabObject)
+	{
+		ActorsToIgnore.Add(HeldGrabObject);
+	}
+
+	FHitResult HitResult;
+	const bool bHit = UKismetSystemLibrary::SphereTraceSingle(
+		this,
+		TraceCenter,
+		TraceCenter,
+		RopeTraceRadius, 
+		UEngineTypes::ConvertToTraceType(ECC_Visibility),
+		false,
+		ActorsToIgnore,
+		EDrawDebugTrace::None,
+		HitResult,
+		true
+	);
+
+	if (bHit && HitResult.GetActor())
+	{
+		if (ARopeActor* HitRope = Cast<ARopeActor>(HitResult.GetActor()))
+		{
+			AttachToRope(HitRope, HitResult.BoneName);
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void ABunny_Third_PersonCharacter::StartRopeTrace() 
 {
 	RopeTraceElapsed = 0.0f;
